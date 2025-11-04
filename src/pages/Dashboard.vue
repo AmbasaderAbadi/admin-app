@@ -1,212 +1,319 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard-container">
     <!-- Header -->
-    <header class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl shadow-lg p-6 mb-10 flex justify-between items-center">
-      <div>
-        <h1 class="text-3xl font-bold">Admin Dashboard</h1>
-        <p class="opacity-80">Welcome back, Admin 👋</p>
+    <div class="header">
+      <div class="header-left">
+        <div class="help-icon">?</div>
       </div>
-      <div class="bg-white/20 rounded-lg px-4 py-2 text-sm font-medium">
-        {{ today }}
+      <div class="header-center">
+        <h1>Welcome back, Admin!</h1>
       </div>
-    </header>
-
-    <!-- Stats Section -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      <CardStat
-        icon="users"
-        title="Total Customers"
-        :value="stats.customers"
-        color="from-emerald-400 to-green-600"
-        class="hover:scale-105 transition-transform"
-      />
-
-      <CardStat
-        icon="briefcase"
-        title="Service Providers"
-        :value="stats.providers"
-        color="from-blue-400 to-indigo-600"
-        class="hover:scale-105 transition-transform"
-      />
-
-      <CardStat
-        icon="calendar"
-        title="Total Bookings"
-        :value="stats.bookings"
-        color="from-purple-400 to-pink-500"
-        class="hover:scale-105 transition-transform"
-      />
-
-      <CardStat
-        icon="dollar-sign"
-        title="Monthly Revenue"
-        :value="`$${stats.revenue}`"
-        color="from-amber-400 to-orange-500"
-        class="hover:scale-105 transition-transform"
-      />
-    </section>
-
-    <!-- Chart + Activity Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-12">
-      <!-- Chart Section -->
-      <section>
-        <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-          📈 Monthly Booking Summary
-        </h2>
-        <div class="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all">
-          <div v-if="loadingChart" class="text-center text-gray-400 py-12 animate-pulse">
-            Loading chart data...
-          </div>
-          <BarChart v-else :data="chartData" />
-        </div>
-      </section>
-
-      <!-- Activity Feed -->
-      <section>
-        <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-          🔔 Latest Activity
-        </h2>
-        <div class="bg-white rounded-2xl shadow-lg p-6 space-y-4 max-h-[420px] overflow-y-auto">
-          <div
-            v-for="(activity, index) in activities"
-            :key="index"
-            class="flex items-start gap-4 border-b pb-3 last:border-none"
-          >
-            <div
-              class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
-              :class="activity.color"
-            >
-              {{ activity.icon }}
-            </div>
-            <div>
-              <p class="text-gray-700 font-medium">{{ activity.title }}</p>
-              <p class="text-gray-400 text-sm">{{ activity.time }}</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      <div class="header-right">
+        <div class="notification-bell">🔔</div>
+      </div>
     </div>
 
-    <!-- Recent Bookings Table -->
-    <section class="mt-12">
-      <h2 class="text-lg font-semibold mb-4 text-gray-700 flex items-center gap-2">
-        🧾 Recent Bookings
-      </h2>
-      <div class="overflow-x-auto bg-white shadow-lg rounded-2xl hover:shadow-2xl transition-all">
-        <table class="min-w-full text-sm text-gray-700">
-          <thead class="bg-gradient-to-r from-indigo-100 to-purple-100 border-b text-gray-700 uppercase text-xs">
-            <tr>
-              <th class="px-4 py-3 text-left">ID</th>
-              <th class="px-4 py-3 text-left">Customer</th>
-              <th class="px-4 py-3 text-left">Provider</th>
-              <th class="px-4 py-3 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="b in recent"
-              :key="b.id"
-              class="hover:bg-indigo-50 cursor-pointer transition"
-              @click="$router.push(`/booking/${b.id}`)"
-            >
-              <td class="px-4 py-2 font-medium">#{{ b.id }}</td>
-              <td class="px-4 py-2">{{ b.customer_name || b.customer }}</td>
-              <td class="px-4 py-2">{{ b.provider_name || b.provider }}</td>
-              <td>
-                <span
-                  class="px-3 py-1 rounded-full text-xs font-semibold"
-                  :class="{
-                    'bg-green-100 text-green-700': b.status === 'confirmed',
-                    'bg-yellow-100 text-yellow-700': b.status === 'pending',
-                    'bg-red-100 text-red-700': b.status === 'cancelled',
-                  }"
-                >
-                  {{ b.status }}
-                </span>
-              </td>
-            </tr>
+    <!-- Time Period Toggle -->
+    <div class="time-period-toggle">
+      <button 
+        v-for="period in timePeriods" 
+        :key="period" 
+        :class="{ 'active': selectedPeriod === period }"
+        @click="selectedPeriod = period"
+      >
+        {{ period }}
+      </button>
+    </div>
 
-            <tr v-if="!recent.length">
-              <td colspan="4" class="text-center py-6 text-gray-400">
-                No recent bookings found.
-              </td>
-            </tr>
-          </tbody>
-        </table>
+    <!-- Metrics Grid -->
+    <div class="metrics-grid">
+      <div 
+        v-for="metric in metrics" 
+        :key="metric.title" 
+        class="metric-card"
+      >
+        <div class="metric-icon">{{ metric.icon }}</div>
+        <div class="metric-title">{{ metric.title }}</div>
+        <div class="metric-value">{{ metric.value }}</div>
+        <div 
+          :class="['metric-change', { 'positive': metric.change >= 0, 'negative': metric.change < 0 }]"
+        >
+          {{ metric.change >= 0 ? '+' : '' }}{{ metric.change }}%
+        </div>
       </div>
-    </section>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <h2>Quick Actions</h2>
+      <div 
+        v-for="action in quickActions" 
+        :key="action.title" 
+        class="quick-action-item"
+        @click="handleAction(action)"
+      >
+        <div class="action-icon">{{ action.icon }}</div>
+        <div class="action-title">{{ action.title }}</div>
+        <div class="action-arrow">></div>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="bottom-navigation">
+      <div 
+        v-for="navItem in navItems" 
+        :key="navItem.title" 
+        :class="['nav-item', { 'active': activeNav === navItem.title }]"
+        @click="activeNav = navItem.title"
+      >
+        <div class="nav-icon">{{ navItem.icon }}</div>
+        <div class="nav-title">{{ navItem.title }}</div>
+      </div>
+    </div>
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted } from 'vue';
-import CardStat from '../components/CardStat.vue';
-import BarChart from '../components/BarChart.vue';
-import { getStats } from '../api/adminStats';
-import { getBookings } from '../api/adminBookings';
-
-const stats = ref({ customers: 0, providers: 0, bookings: 0, revenue: 0 });
-const recent = ref([]);
-const chartData = ref([]);
-const loadingChart = ref(true);
-const today = new Date().toLocaleDateString();
-
-// Sample activities
-const activities = ref([
-  { title: 'New customer registered', time: '2 mins ago', icon: '👤', color: 'bg-blue-500' },
-  { title: 'Booking #124 confirmed', time: '10 mins ago', icon: '✅', color: 'bg-green-500' },
-  { title: 'Provider payout processed', time: '1 hr ago', icon: '💰', color: 'bg-yellow-500' },
-  { title: 'Customer feedback received', time: '3 hrs ago', icon: '⭐', color: 'bg-purple-500' },
-  { title: 'Booking #119 cancelled', time: 'Yesterday', icon: '⚠️', color: 'bg-red-500' },
-]);
-
-onMounted(async () => {
-  try {
-    const s = await getStats();
-    if (s?.data) stats.value = s.data;
-  } catch (e) {
-    console.warn('getStats failed', e);
+<script>
+export default {
+  name: 'AdminDashboard',
+  data() {
+    return {
+      selectedPeriod: 'This Week',
+      timePeriods: ['Today', 'This Week', 'This Month'],
+      metrics: [
+        { title: 'Total Bookings', value: '1,234', change: 5, icon: '📅' },
+        { title: 'Total Revenue', value: '$25,678', change: 8, icon: '💰' },
+        { title: 'New Customers', value: '82', change: 12, icon: '👤+' },
+        { title: 'Active Providers', value: '45', change: -2, icon: '👥' },
+        { title: 'Pending Approvals', value: '12', change: 0, icon: '📋' },
+        { title: 'Upcoming', value: '58', change: 0, icon: '🔄' }
+      ],
+      quickActions: [
+        { title: 'Manage Bookings', icon: '📆' },
+        { title: 'View Customers', icon: '👥' },
+        { title: 'Payments', icon: '💳' },
+        { title: 'System Settings', icon: '⚙️' }
+      ],
+      navItems: [
+        { title: 'Dashboard', icon: '📊' },
+        { title: 'Bookings', icon: '📅' },
+        { title: 'Customers', icon: '👥' },
+        { title: 'Settings', icon: '⚙️' }
+      ],
+      activeNav: 'Dashboard'
+    };
+  },
+  methods: {
+    handleAction(action) {
+      console.log('Action clicked:', action.title);
+      // Add your action handling logic here
+    }
   }
-
-  try {
-    const r = await getBookings();
-    const allBookings = r?.data || [];
-    recent.value = allBookings.slice(0, 6);
-    chartData.value = buildMonthlyData(allBookings);
-  } catch (e) {
-    console.warn('getBookings failed', e);
-  } finally {
-    loadingChart.value = false;
-  }
-});
-
-function buildMonthlyData(bookings) {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const dataMap = {};
-  months.forEach(m => (dataMap[m] = 0));
-  bookings.forEach(b => {
-    const date = new Date(b.created_at || b.date || b.timestamp);
-    const monthName = months[date.getMonth()];
-    if (monthName) dataMap[monthName]++;
-  });
-  return months.map(m => ({ month: m, bookings: dataMap[m] }));
-}
+};
 </script>
 
 <style scoped>
-.dashboard {
-  padding: 32px;
-  min-height: 100vh;
-  background: linear-gradient(to bottom right, #f4f7fb, #e9edf5);
-  transition: background 0.3s ease;
-  background-color: forestgreen;
+.dashboard-container {
+  font-family: Arial, sans-serif;
+  max-width: 100%;
+  padding: 20px;
+  background-color: #f5f7fa;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
 }
-::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.5);
+
+.header-left, .header-right {
+  display: flex;
+  align-items: center;
+}
+
+.help-icon {
+  background-color: #e0e5ff;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: #5a6cff;
+}
+
+.notification-bell {
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.header-center h1 {
+  font-size: 24px;
+  font-weight: bold;
+  margin: 0;
+  position:static;
+}
+
+.time-period-toggle {
+  display: flex;
+  background-color: #e0e5ff;
   border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 20px;
+}
+
+.time-period-toggle button {
+  background-color: transparent;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+width: 300px;
+}
+
+.time-period-toggle button.active {
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.metric-card {
+  background-color: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-icon {
+  background-color: #e0e5ff;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  font-size: 20px;
+}
+
+.metric-title {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.metric-change {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.metric-change.positive {
+  color: #00c853;
+}
+
+.metric-change.negative {
+  color: #ff5252;
+}
+
+.quick-actions {
+  margin-bottom: 30px;
+}
+
+.quick-actions h2 {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+
+.quick-action-item {
+  background-color: white;
+  border-radius: 12px;
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.quick-action-item:hover {
+  background-color: #f0f0f0;
+}
+
+.action-icon {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  font-size: 20px;
+}
+
+.action-title {
+  flex-grow: 1;
+  font-size: 16px;
+}
+
+.action-arrow {
+  font-size: 18px;
+  color: #999;
+}
+
+.bottom-navigation {
+  position: fixed;
+  bottom: 0;
+  left: 20;
+  right: 0;
+  background-color: white;
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+  z-index: 1000;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-item.active {
+  color: #5a6cff;
+}
+
+.nav-icon {
+  font-size: 24px;
+  margin-bottom: 5px;
+}
+
+.nav-title {
+  font-size: 12px;
+  text-align: center;
 }
 </style>

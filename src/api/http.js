@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 const http = axios.create({
-  baseURL: 'http://localhost:3000/infinity-booking', // ✅ Removed accidental extra space
+  baseURL: 'https://infinity-booking-backend1.onrender.com/infinity-booking', // ✅ Removed accidental extra space
   headers: { 'Content-Type': 'application/json' },
 });
 

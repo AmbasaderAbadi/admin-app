@@ -2,7 +2,7 @@
 import axios from 'axios'
 
 const API = axios.create({
-  baseURL: 'http://localhost:3000/infinity-booking', // ✅ use your backend base
+  baseURL: 'https://infinity-booking-backend1.onrender.com/infinity-booking', // ✅ use your backend base
 })
 
 // Login request
