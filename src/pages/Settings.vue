@@ -92,11 +92,11 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter();
 
-// User data (fetch from backend or store)
+// Reactive user object
 const user = ref({
-  name: 'Jordan Smith',
-  email: 'jordan.smith@infinity.io',
-  avatar: 'https://randomuser.me/api/portraits/men/32.jpg' // placeholder
+  name: '',
+  email: '',
+  avatar: ''
 });
 
 // Toggle states
@@ -104,8 +104,33 @@ const notificationsEnabled = ref(true);
 const maintenanceMode = ref(false);
 const twoFactorEnabled = ref(false);
 
-// Load saved settings from localStorage or API
+// Load user data and settings on mount
 onMounted(() => {
+  // Load user profile
+  const storedUser = localStorage.getItem('user');
+  if (storedUser) {
+    try {
+      const parsedUser = JSON.parse(storedUser);
+      user.value = {
+        name: parsedUser.name || 'Admin User',
+        email: parsedUser.email || '',
+        avatar: parsedUser.avatar || 'https://via.placeholder.com/80'
+      };
+    } catch (e) {
+      console.warn('Failed to parse user data:', e);
+      // Fallback if parsing fails
+      user.value = {
+        name: 'Admin User',
+        email: '',
+        avatar: 'https://via.placeholder.com/80'
+      };
+    }
+  } else {
+    // Optional: redirect to login if no user
+    // router.push('/login');
+  }
+
+  // Load app settings
   const saved = localStorage.getItem('appSettings');
   if (saved) {
     const settings = JSON.parse(saved);
@@ -125,7 +150,7 @@ const editProfile = () => {
   router.push('/profile/edit');
 };
 
-// Save setting to localStorage (replace with API call in production)
+// Save setting to localStorage
 const saveSetting = (key, value) => {
   const settings = JSON.parse(localStorage.getItem('appSettings') || '{}');
   settings[key] = value;
@@ -133,28 +158,32 @@ const saveSetting = (key, value) => {
   console.log(`Saved ${key}:`, value);
 };
 
-// Go back to previous page
+// Go back
 const goBack = () => {
   router.back();
 };
 
-// Logout action
+// Logout
 const logout = () => {
-  // Clear auth token, user session, etc.
-  localStorage.removeItem('auth_token');
+  // Clear the exact same keys used during login
+  localStorage.removeItem('admin_token'); // ✅ matches your LayoutAdmin.vue
   localStorage.removeItem('user');
+
+  // Optional: clear any other session data
+  // localStorage.removeItem('appSettings');
+
   // Redirect to login
   router.push('/login');
 };
 </script>
 
 <style scoped>
+/* 👇 REMOVED max-width and margin: 0 auto — now full-width */
 .settings-container {
   padding: 20px;
-  max-width: 600px;
-  margin: 0 auto;
   font-family: Arial, sans-serif;
   background-color: #f8f9fa;
+  /* Optional: add padding for mobile or keep as-is */
 }
 
 .header {

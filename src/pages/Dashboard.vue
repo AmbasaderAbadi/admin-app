@@ -3,7 +3,9 @@
     <!-- Header -->
     <div class="header">
       <div class="header-left">
-        <div class="help-icon">?</div>
+        <div class="help-icon">
+          <img src="../assets/Infinity Booking Logo Enhanced.png" width="50px" height="50px" alt="infinity-booking logo" />
+        </div>
       </div>
       <div class="header-center">
         <h1>Welcome back, Admin!</h1>
@@ -25,8 +27,12 @@
       </button>
     </div>
 
+    <!-- Loading & Error States -->
+    <div v-if="loading" class="status-message">Loading dashboard...</div>
+    <div v-else-if="error" class="status-message error">{{ error }}</div>
+
     <!-- Metrics Grid -->
-    <div class="metrics-grid">
+    <div v-else class="metrics-grid">
       <div 
         v-for="metric in metrics" 
         :key="metric.title" 
@@ -63,8 +69,8 @@
       <div 
         v-for="navItem in navItems" 
         :key="navItem.title" 
-        :class="['nav-item', { 'active': activeNav === navItem.title }]"
-        @click="activeNav = navItem.title"
+        :class="['nav-item', { 'active': isActive(navItem.title) }]"
+        @click="navigateTo(navItem.title)"
       >
         <div class="nav-icon">{{ navItem.icon }}</div>
         <div class="nav-title">{{ navItem.title }}</div>
@@ -74,25 +80,61 @@
 </template>
 
 <script>
+import { ref, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import http from '../api/http';
+
 export default {
   name: 'AdminDashboard',
+  setup() {
+    const router = useRouter();
+    const route = useRoute();
+
+    const isActive = (title) => {
+      const pathMap = {
+        'Dashboard': '/',
+        'Bookings': '/bookings',
+        'Customers': '/customers',
+        'Settings': '/settings'
+      };
+      return route.path === pathMap[title];
+    };
+
+    const navigateTo = (title) => {
+      const pathMap = {
+        'Dashboard': '/',
+        'Bookings': '/bookings',
+        'Customers': '/customers',
+        'Settings': '/settings'
+      };
+      const path = pathMap[title];
+      if (path) {
+        router.push(path);
+      }
+    };
+
+    return {
+      navigateTo,
+      isActive
+    };
+  },
   data() {
     return {
       selectedPeriod: 'This Week',
       timePeriods: ['Today', 'This Week', 'This Month'],
       metrics: [
-        { title: 'Total Bookings', value: '1,234', change: 5, icon: '📅' },
-        { title: 'Total Revenue', value: '$25,678', change: 8, icon: '💰' },
-        { title: 'New Customers', value: '82', change: 12, icon: '👤+' },
-        { title: 'Active Providers', value: '45', change: -2, icon: '👥' },
-        { title: 'Pending Approvals', value: '12', change: 0, icon: '📋' },
-        { title: 'Upcoming', value: '58', change: 0, icon: '🔄' }
+        { title: 'New Customers', value: '—', change: 0, icon: '👤+' },
+        { title: 'Active Providers', value: '—', change: 0, icon: '👥' },
+        { title: 'Active Customers', value: '—', change: 0, icon: '👥' },
+        { title: 'Pending Approvals', value: '—', change: 0, icon: '📋' }
       ],
+      loading: false,
+      error: '',
       quickActions: [
-        { title: 'Manage Bookings', icon: '📆' },
-        { title: 'View Customers', icon: '👥' },
-        { title: 'Payments', icon: '💳' },
-        { title: 'System Settings', icon: '⚙️' }
+        { title: 'Manage Bookings', icon: '📆', route: '/bookings' },
+        { title: 'View Customers', icon: '👥', route: '/customers' },
+        { title: 'Payments', icon: '💳', route: '/payments' },
+        { title: 'System Settings', icon: '⚙️', route: '/settings' }
       ],
       navItems: [
         { title: 'Dashboard', icon: '📊' },
@@ -100,19 +142,155 @@ export default {
         { title: 'Customers', icon: '👥' },
         { title: 'Settings', icon: '⚙️' }
       ],
-      activeNav: 'Dashboard'
+      rawProviders: [],
+      rawCustomers: []
     };
   },
+  async mounted() {
+    await this.fetchRawData();
+  },
+  watch: {
+    selectedPeriod() {
+      this.calculateMetrics();
+    }
+  },
   methods: {
+    async fetchRawData() {
+      this.loading = true;
+      this.error = '';
+      
+      try {
+        const [providersRes, customersRes] = await Promise.all([
+          http.get('/users/providers'),
+          http.get('/users/customers')
+        ]);
+
+        this.rawProviders = Array.isArray(providersRes.data) ? providersRes.data : [];
+        this.rawCustomers = Array.isArray(customersRes.data) ? customersRes.data : [];
+
+        // 🔍 Debug: Log raw data
+        console.log('Fetched Customers:', this.rawCustomers.map(c => ({
+          email: c.email,
+          fullname: c.fullname,
+          created_at: c.created_at,
+          status: c.status
+        })));
+        console.log('Fetched Providers:', this.rawProviders.map(p => ({
+          email: p.email,
+          fullname: p.fullname,
+          created_at: p.created_at,
+          status: p.status
+        })));
+
+        this.calculateMetrics();
+      } catch (error) {
+        console.error('Failed to fetch dashboard ', error);
+        this.error = 'Failed to load dashboard data. Please try again later.';
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    getPeriodRange(period) {
+      const now = new Date();
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+
+      if (period === 'Today') {
+        return { start, end: new Date(now) };
+      } else if (period === 'This Week') {
+        const day = start.getDay();
+        start.setDate(start.getDate() - day);
+        return { start, end: new Date(now) };
+      } else if (period === 'This Month') {
+        start.setDate(1);
+        return { start, end: new Date(now) };
+      }
+      return { start, end: new Date(now) };
+    },
+
+    // ✅ Safe date parser
+    parseDate(dateStr) {
+      if (!dateStr) return new Date(0);
+      try {
+        return new Date(dateStr);
+      } catch {
+        return new Date(0);
+      }
+    },
+
+    calculateMetrics() {
+      const { start, end } = this.getPeriodRange(this.selectedPeriod);
+
+      // ✅ Filter customers
+      const newCustomers = this.rawCustomers.filter(customer => {
+        const joined = this.parseDate(customer.created_at);
+        return joined >= start && joined <= end;
+      }).length;
+
+      // ✅ Active Customers = all customers (since no status)
+      const activeCustomers = newCustomers;
+
+      // ✅ Filter providers
+      const pendingProviders = this.rawProviders.filter(provider => {
+        const created = this.parseDate(provider.created_at || provider.registered_at);
+        return (
+          ['pending', 'awaiting'].includes((provider.status || '').toLowerCase()) &&
+          created >= start && created <= end
+        );
+      }).length;
+
+      const activeProviders = this.rawProviders.filter(provider => {
+        const created = this.parseDate(provider.created_at || provider.registered_at);
+        return (
+          ['active', 'approved'].includes((provider.status || '').toLowerCase()) &&
+          created >= start && created <= end
+        );
+      }).length;
+
+      this.metrics = [
+        { 
+          title: 'New Customers', 
+          value: this.formatNumber(newCustomers), 
+          change: 0, 
+          icon: '👤+' 
+        },
+        { 
+          title: 'Active Providers', 
+          value: this.formatNumber(activeProviders), 
+          change: 0, 
+          icon: '👥' 
+        },
+        { 
+          title: 'Active Customers', 
+          value: this.formatNumber(activeCustomers), 
+          change: 0, 
+          icon: '👥' 
+        },
+        { 
+          title: 'Pending Approvals', 
+          value: this.formatNumber(pendingProviders), 
+          change: 0, 
+          icon: '📋' 
+        }
+      ];
+    },
+
+    formatNumber(num) {
+      return new Intl.NumberFormat().format(num);
+    },
+
     handleAction(action) {
-      console.log('Action clicked:', action.title);
-      // Add your action handling logic here
+      if (action.route) {
+        this.$router.push(action.route);
+      }
     }
   }
 };
 </script>
 
 <style scoped>
+/* Your existing styles */
 .dashboard-container {
   font-family: Arial, sans-serif;
   max-width: 100%;
@@ -135,8 +313,8 @@ export default {
 .help-icon {
   background-color: #e0e5ff;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -153,7 +331,7 @@ export default {
   font-size: 24px;
   font-weight: bold;
   margin: 0;
-  position:static;
+  position: static;
 }
 
 .time-period-toggle {
@@ -172,12 +350,22 @@ export default {
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s ease;
-width: 300px;
+  width: 300px;
 }
 
 .time-period-toggle button.active {
   background-color: white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-message {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+}
+
+.status-message.error {
+  color: #ff5252;
 }
 
 .metrics-grid {
@@ -191,7 +379,7 @@ width: 300px;
   background-color: white;
   border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
 }
@@ -253,7 +441,7 @@ width: 300px;
   margin-bottom: 10px;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .quick-action-item:hover {
@@ -283,14 +471,14 @@ width: 300px;
 .bottom-navigation {
   position: fixed;
   bottom: 0;
-  left: 20;
+  left: 19%;
   right: 0;
   background-color: white;
   align-items: center;
   display: flex;
   justify-content: center;
   padding: 10px 0;
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
   z-index: 1000;
 }
 

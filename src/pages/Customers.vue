@@ -54,21 +54,35 @@
         v-for="(customer, index) in filteredCustomers"
         :key="customer.id"
         class="customer-card"
+        :class="{ expanded: expandedId === customer.id }"
+        @click="toggleExpand(customer.id)"
       >
         <div class="customer-avatar">
           <img
             v-if="customer.avatar"
             :src="customer.avatar"
-            :alt="customer.name"
+            :alt="customer.fullname"
           />
           <div v-else class="avatar-placeholder">
-            {{ customer.name.charAt(0).toUpperCase() }}
+            {{ customer.fullname.charAt(0).toUpperCase() }}
           </div>
         </div>
 
         <div class="customer-info">
-          <div class="customer-name">{{ customer.name }}</div>
+          <div class="customer-name">{{ customer.fullname }}</div>
           <div class="customer-email">{{ customer.email }}</div>
+          
+          <!-- Expanded details -->
+          <div v-if="expandedId === customer.id" class="expanded-details">
+            <div class="detail-row">
+              <span class="detail-label">Phone:</span>
+              <span>{{ customer.phonenumber || '—' }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Address:</span>
+              <span>{{ customer.address || '—' }}</span>
+            </div>
+          </div>
         </div>
 
         <div class="customer-status">
@@ -124,6 +138,55 @@
         <span>+</span>
       </button>
     </div>
+    <!-- Add Customer Modal -->
+<div v-if="showAddModal" class="modal-overlay" @click="closeModal">
+  <div class="modal-content" @click.stop>
+    <div class="modal-header">
+      <h2>Add New Customer</h2>
+      <button class="close-btn" @click="closeModal">×</button>
+    </div>
+
+    <form @submit.prevent="submitNewCustomer" class="add-form">
+      <div class="form-group">
+        <label>Full Name *</label>
+        <input v-model="newCustomer.fullname" type="text" required />
+      </div>
+
+      <div class="form-group">
+        <label>Email *</label>
+        <input v-model="newCustomer.email" type="email" required />
+      </div>
+
+      <div class="form-group">
+        <label>Password *</label>
+        <input v-model="newCustomer.password" type="password" required />
+      </div>
+
+      <div class="form-group">
+        <label>Confirm Password *</label>
+        <input v-model="newCustomer.confirmPassword" type="password" required />
+        <p v-if="passwordMismatch" class="error-text">Passwords do not match</p>
+      </div>
+
+      <div class="form-group">
+        <label>Phone Number *</label>
+        <input v-model="newCustomer.phonenumber" type="text" required />
+      </div>
+
+      <div class="form-group">
+        <label>Address *</label>
+        <textarea v-model="newCustomer.address" rows="2" required></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" @click="closeModal">Cancel</button>
+        <button type="submit" class="btn-submit" :disabled="isSubmitting">
+          {{ isSubmitting ? 'Adding...' : 'Add Customer' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
   </div>
 </template>
 
@@ -131,20 +194,28 @@
 import { ref, onMounted, computed, onBeforeUnmount } from 'vue';
 import http from '../api/http';
 
-// Reactive state
 const customers = ref([]);
 const searchQuery = ref('');
 const selectedStatus = ref('all');
 const loading = ref(false);
 const error = ref('');
-
-// ✅ Track open menus per index (not ID)
 const openMenus = ref([]);
+const expandedId = ref(null);
+// Add customer modal state
+const showAddModal = ref(false);
+const newCustomer = ref({
+  fullname: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  address: '',
+  phonenumber: ''
+});
+const isSubmitting = ref(false);
+const passwordMismatch = ref(false);
 
-// Close all menus when clicking outside
 const handleClickOutside = (e) => {
   if (!e.target.closest('.customer-actions')) {
-    // Close all menus
     openMenus.value = openMenus.value.map(() => false);
   }
 };
@@ -158,14 +229,23 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
 });
 
-// Fetch customers
 const fetchCustomers = async () => {
   loading.value = true;
   error.value = '';
   try {
     const res = await http.get('/users/customers');
-    customers.value = Array.isArray(res.data) ? res.data : [];
-    // Initialize openMenus array
+    const rawCustomers = Array.isArray(res.data) ? res.data : [];
+
+    // ✅ CRITICAL: Ensure unique `id` — use email as fallback if needed
+    customers.value = rawCustomers.map(customer => ({
+      id: customer.id || customer.email, // ← THIS IS KEY
+      fullname: customer.fullname?.trim() || 'Unnamed Customer',
+      email: customer.email?.trim() || 'No email',
+      phonenumber: customer.phonenumber?.trim() || '—',
+      address: customer.address || '—',
+      status: customer.status || 'active'
+    }));
+
     openMenus.value = new Array(customers.value.length).fill(false);
   } catch (e) {
     console.error('Failed to fetch customers:', e);
@@ -175,42 +255,42 @@ const fetchCustomers = async () => {
   }
 };
 
-// Toggle menu for specific index
 const toggleMenu = (index) => {
-  // Close all other menus first
   openMenus.value = openMenus.value.map((_, i) => i === index);
 };
 
-// Normalize status for styling
+const toggleExpand = (id) => {
+  // ✅ This is already correct — only toggles the clicked customer
+  expandedId.value = expandedId.value === email ? null : email;
+};
+
 const normalizeStatus = (status) => {
   return status ? status.toLowerCase() : 'inactive';
 };
 
-// Helper: Can we suspend?
 const isSuspendable = (status) => {
   return normalizeStatus(status) === 'active';
 };
 
-// Helper: Can we activate?
 const isActivatable = (status) => {
   return normalizeStatus(status) !== 'active';
 };
 
-// Update customer status
 const updateStatus = async (customer, newStatus) => {
   try {
-    await http.patch(`/users/customers/${customer.id}`, {
+    await http.patch(`/users/customers/${customer.email}`, {
       status: newStatus
     });
 
-    // Optimistic UI update
-    const idx = customers.value.findIndex(c => c.id === customer.id);
+    const idx = customers.value.findIndex(c => c.email === customer.email);
     if (idx !== -1) {
-      customers.value[idx] = { ...customers.value[idx], status: newStatus.charAt(0).toUpperCase() + newStatus.slice(1) };
+      customers.value[idx] = {
+        ...customers.value[idx],
+        status: newStatus.charAt(0).toUpperCase() + newStatus.slice(1)
+      };
     }
 
-    // Close menu after action
-    const menuIndex = filteredCustomers.findIndex(c => c.id === customer.id);
+    const menuIndex = filteredCustomers.value.findIndex(c => c.email === customer.email);
     if (menuIndex !== -1) {
       openMenus.value[menuIndex] = false;
     }
@@ -220,34 +300,31 @@ const updateStatus = async (customer, newStatus) => {
   }
 };
 
-// Delete customer
 const deleteCustomer = async (customer) => {
-  if (!confirm(`Are you sure you want to delete ${customer.name}?`)) return;
+  if (!confirm(`Are you sure you want to delete ${customer.fullname}?`)) return;
 
   try {
-    await http.delete(`/users/customers/${customer.id}`);
-
-    // Remove from list
-    customers.value = customers.value.filter(c => c.id !== customer.id);
-    
-    // Re-initialize openMenus
+    await http.delete(`/users/customers/${customer.email}`);
+    customers.value = customers.value.filter(c => c.email !== customer.email);
     openMenus.value = new Array(customers.value.length).fill(false);
+    
+    if (expandedId.value === customer.id) {
+      expandedId.value = null;
+    }
   } catch (e) {
     console.error('Failed to delete customer:', e);
     alert('Failed to delete customer. Please try again.');
   }
 };
 
-// Filter computed
 const filteredCustomers = computed(() => {
   let result = [...customers.value];
 
   if (searchQuery.value.trim()) {
     const term = searchQuery.value.toLowerCase().trim();
     result = result.filter((c) =>
-      (c.name?.toLowerCase().includes(term)) ||
-      (c.email?.toLowerCase().includes(term)) ||
-      String(c.id).includes(term)
+      c.fullname.toLowerCase().includes(term) ||
+      c.email.toLowerCase().includes(term)
     );
   }
 
@@ -262,14 +339,195 @@ const filteredCustomers = computed(() => {
   return result;
 });
 
-const filterCustomers = () => {}; // for future debounce
+const filterCustomers = () => {};
 const addNewCustomer = () => {
-  console.log('Add new customer');
+  // Reset form
+  newCustomer.value = {
+    fullname: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    address: '',
+    phonenumber: '',
+    role:''
+  };
+  passwordMismatch.value = false;
+  showAddModal.value = true;
+};
+const closeModal = () => {
+  showAddModal.value = false;
+};
+
+const submitNewCustomer = async () => {
+  if (newCustomer.value.password !== newCustomer.value.confirmPassword) {
+    passwordMismatch.value = true;
+    return;
+  }
+  passwordMismatch.value = false;
+
+  isSubmitting.value = true;
+  try {
+    await http.post('/users/customers', {
+      fullname: newCustomer.value.fullname,
+      email: newCustomer.value.email,
+      password: newCustomer.value.password,
+      address: newCustomer.value.address,
+      phonenumber: newCustomer.value.phonenumber,
+      role: 'customer'
+    });
+
+    await fetchCustomers();
+    closeModal();
+    alert('Customer added successfully!');
+  } catch (e) {
+    console.error('Full error:', e); // 👈 THIS IS CRITICAL
+
+    // Check if it's an Axios error with response
+    if (e.response) {
+      console.error('Backend responded with:', e.response.status, e.response.data);
+      alert(`Registration failed: ${e.response.data?.message || 'Unknown error'}`);
+    } else if (e.request) {
+      console.error('No response received:', e.request);
+      alert('Network error. Please check your connection.');
+    } else {
+      console.error('Error setting up request:', e.message);
+      alert('Request setup failed.');
+    }
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 </script>
 
 <style scoped>
-/* Keep all your beautiful styles */
+/* Keep all your styles, with minor additions for expanded view */
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e5ff;
+}
+
+.modal-header h2 {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.close-btn:hover {
+  color: #333;
+}
+
+.add-form {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #5a6cff;
+}
+
+.error-text {
+  color: #ff5252;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.btn-cancel,
+.btn-submit {
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-cancel {
+  background: #eee;
+  border: none;
+  color: #333;
+}
+
+.btn-cancel:hover {
+  background: #ddd;
+}
+
+.btn-submit {
+  background: #4285f4;
+  color: white;
+  border: none;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #3367d6;
+}
+
+.btn-submit:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+}
 .customers-container {
   font-family: Arial, sans-serif;
   padding: 20px;
@@ -361,9 +619,21 @@ const addNewCustomer = () => {
   border-radius: 12px;
   padding: 15px;
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* allow vertical growth */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  position: relative; /* Required for dropdown */
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.customer-card:hover:not(.expanded) {
+  background-color: #f8f9fa;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.customer-card.expanded {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  background-color: #fafbff;
 }
 
 .customer-avatar {
@@ -372,6 +642,7 @@ const addNewCustomer = () => {
   border-radius: 50%;
   overflow: hidden;
   margin-right: 15px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -392,30 +663,56 @@ const addNewCustomer = () => {
 
 .customer-info {
   flex-grow: 1;
+  min-width: 0; /* prevent overflow */
 }
 
 .customer-name {
   font-size: 16px;
   font-weight: bold;
   margin-bottom: 3px;
+  color: #333;
 }
 
 .customer-email {
   font-size: 14px;
   color: #666;
+  margin-bottom: 8px;
+}
+
+/* Expanded details */
+.expanded-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+  font-size: 14px;
+  color: #555;
+}
+
+.detail-row {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.detail-label {
+  font-weight: 500;
+  color: #333;
+  min-width: 70px;
 }
 
 .customer-status {
   display: flex;
-  align-items: center;
-  margin-right: 20px;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 10px; /* ← added spacing */
+  margin-right: 25px; /* ← space for 3-dot menu */
+  flex-shrink: 0;
 }
 
 .status-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  margin-right: 8px;
+  margin-bottom: 4px;
 }
 
 .status-dot.active {
@@ -431,8 +728,9 @@ const addNewCustomer = () => {
 }
 
 .status-text {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
+  text-align: right;
 }
 
 .status-text.active {
@@ -448,9 +746,9 @@ const addNewCustomer = () => {
 }
 
 .customer-actions {
-  position: relative;
-  display: flex;
-  align-items: center;
+  position: absolute;
+  top: 10px;
+  right: 10px;
 }
 
 .more-options {
@@ -461,6 +759,7 @@ const addNewCustomer = () => {
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
+  z-index: 2;
 }
 
 .more-options:hover {
