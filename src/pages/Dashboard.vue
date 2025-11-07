@@ -393,7 +393,7 @@ export default {
   align-items: center;
   justify-content: center;
   margin-bottom: 10px;
-  font-size: 20px;
+  font-size: 21px;
 }
 
 .metric-title {
