@@ -32,6 +32,7 @@
         <a :class="{ active: isActive('/bookings') }" @click.prevent="to('/bookings')">Bookings</a>
         <a :class="{ active: isActive('/payments') }" @click.prevent="to('/payments')">Payments</a>
         <a :class="{ active: isActive('/customers') }" @click.prevent="to('/customers')">Customers</a>
+        <a :class="{ active: isActive('/services') }" @click.prevent="to('/services')">Services</a>
       </nav>
 
       <div style="margin-top: auto">
@@ -304,13 +305,12 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   /* Make hamburger larger and more touch-friendly */
   .hamburger-btn {
-    top: 15px;
+    top: 50px;
     left: 15px;
-    width: 44px;
+    width: 34px;
     height: 44px;
     font-size: 24px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    
   }
   
   /* Hide tooltip on mobile (no hover) */

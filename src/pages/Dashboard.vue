@@ -1,4 +1,3 @@
-<!-- src/views/Dashboard.vue -->
 <template>
   <div class="dashboard-container">
     <!-- Header -->
@@ -165,7 +164,8 @@ export default {
         { title: 'Settings', icon: '⚙️' }
       ],
       allCustomers: [],
-      allProviders: []
+      allProviders: [],
+      serviceCategories: []
     };
   },
   computed: {
@@ -187,29 +187,65 @@ export default {
       this.error = '';
       
       try {
-        const [customersRes, providersRes] = await Promise.all([
-          http.get('/users/customers'),
-          http.get('/users/providers')
-        ]);
+        // ✅ Handle each API call separately - no Promise.all()
+        let customersData = [];
+        let providersData = [];
+        let categoriesData = [];
 
-        this.allCustomers = Array.isArray(customersRes.data) ? customersRes.data.map(user => ({
-          _id: user._id,
-          ...user.customerProfile,
-          status: user.customerProfile?.status || 'unknown',
-          createdAt: user.customerProfile?.createdAt || user.createdAt
-        })) : [];
+        // ✅ Fetch customers
+        try {
+          const customersRes = await http.get('/users/customers');
+          customersData = Array.isArray(customersRes.data) ? customersRes.data : [];
+        } catch (err) {
+          console.warn('Failed to fetch customers:', err);
+        }
 
-        this.allProviders = Array.isArray(providersRes.data) ? providersRes.data.map(user => ({
-          _id: user._id,
-          ...user.providerProfile,
-          status: user.providerProfile?.status || 'pending',
-          createdAt: user.providerProfile?.createdAt || user.createdAt
-        })) : [];
+        // ✅ Fetch providers  
+        try {
+          const providersRes = await http.get('/users/providers');
+          providersData = Array.isArray(providersRes.data) ? providersRes.data : [];
+        } catch (err) {
+          console.warn('Failed to fetch providers:', err);
+        }
+
+        // ✅ Fetch categories
+        try {
+          const categoriesRes = await http.get('/categories');
+          categoriesData = Array.isArray(categoriesRes.data) ? categoriesRes.data : [];
+        } catch (err) {
+          console.warn('Failed to fetch categories:', err);
+        }
+
+        // ✅ Process the data
+        this.allCustomers = customersData.map(user => {
+          const profile = user.customerProfile || {};
+          return {
+            _id: user._id,
+            fullname: profile.fullname || 'Unnamed Customer',
+            email: profile.email || 'no-email@example.com',
+            status: profile.status || 'unknown',
+            createdAt: profile.createdAt || user.createdAt || null
+          };
+        });
+
+        this.allProviders = providersData.map(user => {
+          const profile = user.providerProfile || {};
+          return {
+            _id: user._id,
+            fullname: profile.fullname || 'Unnamed Provider',
+            email: profile.email || 'no-email@example.com',
+            status: profile.status || 'pending',
+            createdAt: profile.createdAt || user.createdAt || null
+          };
+        });
+
+        this.serviceCategories = categoriesData;
 
         this.calculateMetrics();
       } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
+        console.error('Unexpected error in fetchAllData:', error);
         this.error = 'Failed to load dashboard data. Please try again later.';
+        // ✅ Still show metrics with default values
         this.timeBasedMetrics = this.getDefaultTimeMetrics();
         this.totalMetrics = this.getDefaultTotalMetrics();
       } finally {
@@ -233,6 +269,7 @@ export default {
       return [
         { title: 'Total Customers', value: '—', icon: '👥', route: '/customers', statusFilter: 'all', subtitle: 'All statuses' },
         { title: 'Total Providers', value: '—', icon: '🔧', route: '/providers', statusFilter: 'all', subtitle: 'All statuses' },
+        { title: 'Total Categories', value: '—', icon: '📋', route: '/services', statusFilter: 'all', subtitle: 'Service categories' },
         { title: 'Active Customers', value: '—', icon: '✅', route: '/customers', statusFilter: 'active', subtitle: 'Currently active' },
         { title: 'Active Providers', value: '—', icon: '✅', route: '/providers', statusFilter: 'active', subtitle: 'Currently active' },
         { title: 'Inactive Customers', value: '—', icon: '⏸️', route: '/customers', statusFilter: 'inactive', subtitle: 'Deactivated' },
@@ -296,14 +333,12 @@ export default {
       const prevNewCustomers = this.countInPeriod(this.allCustomers, prevStart);
       const prevNewProviders = this.countInPeriod(this.allProviders, prevStart);
       
-      // Time-based metrics (within period)
       const newActiveCustomers = currentNewCustomers.filter(c => c.status === 'active').length;
       const newActiveProviders = currentNewProviders.filter(p => p.status === 'active').length;
       const newSuspendedCustomers = currentNewCustomers.filter(c => c.status === 'suspended').length;
       const newSuspendedProviders = currentNewProviders.filter(p => p.status === 'suspended').length;
       const newPendingProviders = currentNewProviders.filter(p => p.status === 'pending').length;
       
-      // Calculate changes
       const calcChange = (current, previous) => {
         if (previous === 0) return current > 0 ? 100 : 0;
         return Math.round(((current - previous) / previous) * 100);
@@ -327,7 +362,7 @@ export default {
           statusFilter: 'all'
         },
         { 
-          title: ' Active Customers', 
+          title: 'New Active Customers', 
           value: this.formatNumber(newActiveCustomers), 
           change: 0, 
           icon: '✅',
@@ -335,7 +370,7 @@ export default {
           statusFilter: 'active'
         },
         { 
-          title: ' Active Providers', 
+          title: 'New Active Providers', 
           value: this.formatNumber(newActiveProviders), 
           change: 0, 
           icon: '✅',
@@ -343,7 +378,7 @@ export default {
           statusFilter: 'active'
         },
         { 
-          title: 'Suspended Customers', 
+          title: 'New Suspended Customers', 
           value: this.formatNumber(newSuspendedCustomers), 
           change: 0, 
           icon: '⛔',
@@ -351,7 +386,7 @@ export default {
           statusFilter: 'suspended'
         },
         { 
-          title: ' Suspended Providers', 
+          title: 'New Suspended Providers', 
           value: this.formatNumber(newSuspendedProviders), 
           change: 0, 
           icon: '⛔',
@@ -359,7 +394,7 @@ export default {
           statusFilter: 'suspended'
         },
         { 
-          title: 'Pending Providers', 
+          title: 'New Pending Providers', 
           value: this.formatNumber(newPendingProviders), 
           change: 0, 
           icon: '⏳',
@@ -368,7 +403,6 @@ export default {
         }
       ];
       
-      // Total metrics (all time)
       const totalCustomers = this.allCustomers.length;
       const totalProviders = this.allProviders.length;
       const activeCustomers = this.getStatusCount(this.allCustomers, 'active');
@@ -378,6 +412,7 @@ export default {
       const suspendedCustomers = this.getStatusCount(this.allCustomers, 'suspended');
       const suspendedProviders = this.getStatusCount(this.allProviders, 'suspended');
       const pendingProviders = this.getStatusCount(this.allProviders, 'pending');
+      const totalCategories = this.serviceCategories.length;
       
       this.totalMetrics = [
         { 
@@ -395,6 +430,14 @@ export default {
           route: '/providers',
           statusFilter: 'all',
           subtitle: 'All statuses'
+        },
+        { 
+          title: 'Total Categories', 
+          value: this.formatNumber(totalCategories), 
+          icon: '📋',
+          route: '/services',
+          statusFilter: 'all',
+          subtitle: 'Service categories'
         },
         { 
           title: 'Active Customers', 
@@ -465,8 +508,7 @@ export default {
           this.$router.push({
             path: metric.route,
             query: { 
-              status: metric.statusFilter,
-              period: this.selectedPeriod // Optional: pass period for time-based views
+              status: metric.statusFilter
             }
           });
         } else {
@@ -485,7 +527,7 @@ export default {
 </script>
 
 <style scoped>
-/* ... your existing dashboard styles ... */
+/* ... your existing styles ... */
 .dashboard-container {
   font-family: Arial, sans-serif;
   max-width: 100%;
@@ -745,7 +787,7 @@ export default {
   }
   
   .metrics-grid {
-    grid-template-columns: 1fr; /* Single column on mobile */
+    grid-template-columns: 1fr;
     gap: 16px;
   }
   
@@ -762,7 +804,7 @@ export default {
   }
   
   .bottom-navigation {
-    left: 0; /* Full width on mobile */
+    left: 0;
     right: 0;
     padding: 8px 0;
   }

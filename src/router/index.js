@@ -9,6 +9,7 @@ import BookingDetail from '../pages/BookingDetail.vue';
 import Payments from '../pages/Payments.vue';
 import Customers from '../pages/Customers.vue';
 import Settings from '../pages/Settings.vue';
+import Services from '../pages/Services.vue';
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
@@ -25,7 +26,8 @@ const routes = [
       { path: 'bookings/:id', name: 'BookingDetail', component: BookingDetail, props: true },
       { path: 'payments', name: 'Payments', component: Payments },
       { path: 'customers', name: 'Customers', component: Customers },
-      {path:  'settings', name:'Settings' , component: Settings}
+      {path:  'settings', name:'Settings' , component: Settings},
+      {path:  'services', name:'Services' , component: Services}
     ]
   },
 
