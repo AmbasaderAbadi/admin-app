@@ -2,9 +2,11 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router' 
 import { loginAdmin } from '../api/auth' 
+import http from '../api/http';
 
 const router = useRouter()
 
+// Credentials
 const email = ref('')
 const password = ref('')
 const error = ref('')
@@ -12,16 +14,22 @@ const loading = ref(false)
 const showForgotPassword = ref(false)
 const forgotEmail = ref('')
 const forgotMessage = ref('')
-// New state variable to manage password visibility
+
+// Persistent data for 2FA step
+const loginEmail = ref('')
+const tempToken = ref('') // ✅ Store temp token from login
+
+// 2FA PIN
+const loginStep = ref('credentials')
+const pin = ref('')
 const isPasswordVisible = ref(false) 
 
-// Function to toggle password visibility
 const togglePasswordVisibility = () => {
   isPasswordVisible.value = !isPasswordVisible.value
 }
 
 const validateForm = () => {
-  error.value = ''; // Clear existing errors
+  error.value = ''
   if (!email.value.trim()) { error.value = 'Email is required'; return false }
   if (!password.value.trim()) { error.value = 'Password is required'; return false }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) { error.value = 'Invalid email format'; return false }
@@ -29,133 +37,227 @@ const validateForm = () => {
 }
 
 const handleLogin = async () => {
-  if (!validateForm()) return
-  loading.value = true
-  forgotMessage.value = '' // Clear success messages on login attempt
-  try {
-    // Assuming loginAdmin is available globally or imported correctly in the real environment
-    // Note: The imports for 'vue-router' and '../api/auth' are kept for API compatibility.
-    const res = await loginAdmin(email.value, password.value) 
-    if (res?.token) {
-      // Storing token and user data as per original code
-      localStorage.setItem('admin_token', res.token)
-      localStorage.setItem('admin_user', JSON.stringify(res.user || {}))
-      router.push('/dashboard')
-    } else error.value = 'Unexpected response from server'
-  } catch (err) {
-    error.value = err?.message || 'Login failed. Check your credentials.'
-  } finally {
-    loading.value = false
+  if (loginStep.value === 'credentials') {
+    if (!validateForm()) return
+    loading.value = true
+    forgotMessage.value = ''
+    try {
+      const res = await loginAdmin(email.value, password.value)
+      
+      if (res?.twoFactorRequired && res.twoFactorMethod === 'pin') {
+        loginEmail.value = email.value
+        tempToken.value = res.token // ✅ Save temp token
+        loginStep.value = '2fa-pin'
+        pin.value = ''
+        error.value = ''
+      } else if (res?.token) {
+        completeLogin(res)
+      } else {
+        error.value = 'Unexpected response from server'
+      }
+    } catch (err) {
+      error.value = err?.message || 'Login failed. Check your credentials.'
+    } finally {
+      loading.value = false
+    }
+  } else if (loginStep.value === '2fa-pin') {
+    if (!/^\d{6}$/.test(pin.value)) {
+      error.value = 'PIN must be exactly 6 digits';
+      return;
+    }
+    
+    const pinNumber = parseInt(pin.value, 10);
+    loading.value = true;
+    
+    try {
+      // ✅ Create a new HTTP instance with temp token
+      const verifyHttp = http.create();
+      verifyHttp.defaults.headers.common['Authorization'] = `Bearer ${tempToken.value}`;
+      
+      const verifyRes = await verifyHttp.post('/auth/2fa/pin/verify', {
+        email: loginEmail.value,
+        pin: pinNumber
+      });
+      
+      completeLogin(verifyRes.data);
+    } catch (err) {
+      console.error('PIN Verification Error:', err.response?.data || err.message);
+      error.value = err?.response?.data?.message || 'Invalid PIN. Please try again.';
+    } finally {
+      loading.value = false;
+    }
   }
+}
+
+const completeLogin = (res) => {
+  localStorage.setItem('admin_token', res.token)
+  localStorage.setItem('admin_user', JSON.stringify(res.user || {}))
+  router.push('/dashboard')
 }
 
 const handleForgotPassword = () => {
   forgotMessage.value = ''
   error.value = ''
-  if (!forgotEmail.value.trim()) { forgotMessage.value = 'Enter your email address'; return }
+  if (!forgotEmail.value.trim()) { 
+    forgotMessage.value = 'Enter your email address'
+    return 
+  }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail.value)) {
-    forgotMessage.value = 'Please enter a valid email address.';
-    return;
+    forgotMessage.value = 'Please enter a valid email address.'
+    return
   }
   
-  // This is a simulated success message, as the actual API call is imported
   forgotMessage.value = `If an account exists for ${forgotEmail.value}, a reset link was sent.`
-  
   forgotEmail.value = ''
   setTimeout(() => {
     forgotMessage.value = ''
     if (!error.value) showForgotPassword.value = false
   }, 5000)
 }
+
+const backToLogin = () => {
+  loginStep.value = 'credentials'
+  error.value = ''
+}
 </script>
 
 <template>
-  <!-- New Split Screen Container -->
+  <!-- Split Screen Container -->
   <div class="split-screen-container">
-
-    <!-- Left Side: Description/Branding Panel (Hidden on small screens) -->
+    <!-- Left Panel -->
     <div class="description-panel">
-        <div class="panel-content">
-            <h2 class="panel-title">Welcome to the Admin Portal.</h2>
-            <p class="panel-text">Manage users, content, and system settings efficiently and securely. This side is for branding and information.</p>
-            <div class="infinity-icon">
-                <!-- Larger, centered infinity icon for the branding panel -->
-                <img src="../assets/Infinity Booking Logo Enhanced.png" width="505px" height="300px" alt="App Logo" class="logo" />
-            </div>
+      <div class="panel-content">
+        <h2 class="panel-title">Welcome to the Admin Portal.</h2>
+        <p class="panel-text">Manage users, content, and system settings efficiently and securely.</p>
+        <div class="infinity-icon">
+          <img src="../assets/Infinity Booking Logo Enhanced.png" width="505px" height="300px" alt="App Logo" class="logo" />
         </div>
+      </div>
     </div>
 
-    <!-- Right Side: Login Form Container -->
+    <!-- Login Form -->
     <div class="form-container">
       <div class="login-card">
-        <!-- Logo: Simple Infinity Symbol SVG -->
         <img src="../assets/Infinity Booking Logo Enhanced.png" alt="App Logo" class="logo" width="50px" height="50px" />
         
         <!-- Header -->
-        <h1 class="card-title">{{ showForgotPassword ? 'Reset Password' : 'Sign In to Admin Portal' }}</h1>
+        <h1 class="card-title">
+          {{
+            showForgotPassword 
+              ? 'Reset Password' 
+              : loginStep === '2fa-pin' 
+                ? 'Two-Factor Authentication' 
+                : 'Sign In to Admin Portal'
+          }}
+        </h1>
         <p class="card-subtitle">
-          {{ showForgotPassword ? 'Enter your email below to get a reset link.' : 'Welcome back! Please enter your details.' }}
+          {{
+            showForgotPassword 
+              ? 'Enter your email below to get a reset link.' 
+              : loginStep === '2fa-pin'
+                ? 'Enter your 6-digit security PIN'
+                : 'Welcome back! Please enter your details.'
+          }}
         </p>
 
-        <!-- Message Area -->
+        <!-- Messages -->
         <p v-if="error" class="error-msg">{{ error }}</p>
         <p v-if="forgotMessage" class="success-msg">{{ forgotMessage }}</p>
 
         <!-- Login Form -->
-        <form v-if="!showForgotPassword" @submit.prevent="handleLogin" class="auth-form">
-          <label for="email-input">Email Address</label>
-          <div class="input-field">
-            <!-- Email Icon -->
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-            <input id="email-input" v-model="email" type="email" placeholder="you@example.com" required :disabled="loading">
-          </div>
+        <form 
+          v-if="!showForgotPassword" 
+          @submit.prevent="handleLogin" 
+          class="auth-form"
+        >
+          <!-- Credentials Step -->
+          <template v-if="loginStep === 'credentials'">
+            <label for="email-input">Email Address</label>
+            <div class="input-field">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+              <input 
+                id="email-input" 
+                v-model="email" 
+                type="email" 
+                placeholder="you@example.com" 
+                required 
+                :disabled="loading"
+              >
+            </div>
 
-          <label for="password-input">Password</label>
-          <div class="input-field password-field">
-            <!-- Lock Icon -->
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-            <input 
-              id="password-input" 
-              v-model="password" 
-              :type="isPasswordVisible ? 'text' : 'password'" 
-              placeholder="Enter your password" 
-              required 
-              :disabled="loading"
-            >
-            <!-- Toggle Icon: Shows Eye if password is hidden, Shows Eye-Off if password is visible -->
-            <svg 
-              class="eye-icon" 
-              xmlns="http://www.w3.org/2000/svg" 
-              width="20" 
-              height="20" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="#9EABB4" 
-              stroke-width="2" 
-              stroke-linecap="round" 
-              stroke-linejoin="round"
-              @click="togglePasswordVisibility"
-            >
-              <template v-if="isPasswordVisible">
-                <!-- Eye Off Icon (Slashed eye) -->
-                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-                <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 11 8 11 8a18.5 18.5 0 0 1-2.93 2.55"></path>
-                <path d="M2 2l20 20"></path>
-                <path d="M6.71 6.71l6.01 6.01"></path>
-                <path d="M12 17.5s-4 4-11 4"></path>
-              </template>
-              <template v-else>
-                <!-- Eye Icon (Visible eye) -->
-                <path d="M2 12s4-8 10-8 10 8 10 8-4 8-10 8-10-8-10-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </template>
-            </svg>
-          </div>
+            <label for="password-input">Password</label>
+            <div class="input-field password-field">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+              <input 
+                id="password-input" 
+                v-model="password" 
+                :type="isPasswordVisible ? 'text' : 'password'" 
+                placeholder="Enter your password" 
+                required 
+                :disabled="loading"
+              >
+              <svg 
+                class="eye-icon" 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="20" 
+                height="20" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="#9EABB4" 
+                stroke-width="2" 
+                stroke-linecap="round" 
+                stroke-linejoin="round"
+                @click="togglePasswordVisibility"
+              >
+                <template v-if="isPasswordVisible">
+                  <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
+                  <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 11 8 11 8a18.5 18.5 0 0 1-2.93 2.55"></path>
+                  <path d="M2 2l20 20"></path>
+                  <path d="M6.71 6.71l6.01 6.01"></path>
+                  <path d="M12 17.5s-4 4-11 4"></path>
+                </template>
+                <template v-else>
+                  <path d="M2 12s4-8 10-8 10 8 10 8-4 8-10 8-10-8-10-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </template>
+              </svg>
+            </div>
+            
+            <p class="forgot-link" @click="showForgotPassword = true">Forgot Password?</p>
+          </template>
+
+          <!-- 2FA PIN Step -->
+          <template v-else-if="loginStep === '2fa-pin'">
+            <label for="pin-input">6-Digit PIN</label>
+            <div class="input-field">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 22v-4M4 12H2m20 0h-2M7 7l-3-3m18 18l-3-3M7 17l-3 3m18-18l-3 3"/></svg>
+              <input 
+                id="pin-input"
+                v-model="pin" 
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                placeholder="••••••"
+                @input="pin = pin.replace(/\D/g, '').slice(0, 6)"
+                :disabled="loading"
+                autocomplete="off"
+              >
+            </div>
+            <p class="forgot-link back-link" @click="backToLogin">← Back to Login</p>
+          </template>
           
-          <p class="forgot-link" @click="showForgotPassword = true">Forgot Password?</p>
-          
-          <button type="submit" :disabled="loading" class="sign-in-btn">
-            {{ loading ? 'Signing In...' : 'Sign In' }}
+          <button 
+            type="submit" 
+            :disabled="loading || (loginStep === '2fa-pin' && pin.length !== 6)" 
+            class="sign-in-btn"
+          >
+            {{ 
+              loading 
+                ? 'Processing...' 
+                : loginStep === '2fa-pin' 
+                  ? 'Verify PIN' 
+                  : 'Sign In' 
+            }}
           </button>
         </form>
 
@@ -170,17 +272,24 @@ const handleForgotPassword = () => {
           <button type="submit" class="sign-in-btn">
             Send Reset Link
           </button>
-
           <p class="forgot-link back-link" @click="showForgotPassword = false">← Back to Sign In</p>
         </form>
-
       </div>
     </div>
   </div>
 </template>
 
 <style>
-/* 1. Base Reset and Container */
+/* ... your existing styles ... */
+
+/* Add PIN input styles */
+#pin-input {
+  letter-spacing: 8px;
+  font-size: 24px;
+  text-align: center;
+}
+
+/* Keep all your existing CSS unchanged */
 * { 
     box-sizing: border-box; 
     margin: 0; 
@@ -192,19 +301,17 @@ body, html, #app {
     height: 100%; 
 }
 
-/* Reworked Layout: Two-column on desktop, one-column on mobile */
 .split-screen-container {
     display: flex;
     min-height: 100vh;
     width: 100%;
-    background-color: #f7f9fa; /* Light background for the overall page */
+    background-color: #f7f9fa;
 }
 
-/* Left Side Panel - Description/Branding */
 .description-panel {
-    display: none; /* Hidden by default on mobile */
-    flex: 1; /* Takes up 50% on desktop */
-    background-color: #2c3e50; /* Dark primary color for branding */
+    display: none;
+    flex: 1;
+    background-color: #2c3e50;
     color: white;
     padding: 60px;
     align-items: center;
@@ -234,27 +341,24 @@ body, html, #app {
     opacity: 0.8;
 }
 
-/* Right Side: Login Form Container */
 .form-container {
-    flex: 1; /* Takes up 100% on mobile, 50% on desktop */
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 20px;
 }
 
-/* 2. Login Card */
 .login-card {
     background: white;
     padding: 40px;
-    border-radius: 8px; 
+    border-radius: 8px;
     width: 100%;
     max-width: 420px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); 
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     text-align: center;
 }
 
-/* 3. Header and Logo */
 .logo {
     display: block;
     margin: 0 auto 20px auto;
@@ -274,7 +378,6 @@ body, html, #app {
     margin-bottom: 25px;
 }
 
-/* 4. Form Styling (No changes needed) */
 .auth-form {
     display: flex;
     flex-direction: column;
@@ -293,7 +396,7 @@ label {
     position: relative;
     display: flex;
     align-items: center;
-    border: 1px solid #ced4da; 
+    border: 1px solid #ced4da;
     border-radius: 6px;
     padding-left: 12px;
     transition: all 0.2s;
@@ -319,25 +422,21 @@ input {
     font-size: 1rem;
     color: #343a40;
     background-color: transparent;
-    width: 100%; 
+    width: 100%;
 }
 
 .password-field input {
     padding-right: 40px;
 }
 
-/* Custom styles for the clickable eye icon */
 .eye-icon {
     position: absolute;
     right: 12px;
     cursor: pointer;
-    padding: 5px; /* Increase hit area for touch */
-    margin: -5px; /* Offset the padding to keep it visually correct */
+    padding: 5px;
+    margin: -5px;
 }
-/* Revert margin only for the SVG itself if necessary, but the padding trick is better */
 
-
-/* 5. Links and Buttons (No changes needed) */
 .forgot-link {
     font-size: 0.9rem;
     font-weight: 500;
@@ -380,7 +479,6 @@ input {
     cursor: not-allowed;
 }
 
-/* 6. Messages (No changes needed) */
 .error-msg, .success-msg {
     padding: 10px;
     border-radius: 6px;
@@ -402,9 +500,7 @@ input {
     border: 1px solid #c3e6cb;
 }
 
-/* 7. Responsive Adjustments */
 @media (min-width: 900px) {
-    /* Show Description Panel and create two columns */
     .description-panel {
         display: flex;
     }

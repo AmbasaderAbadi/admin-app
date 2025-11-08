@@ -1,3 +1,4 @@
+<!-- src/views/Customers.vue -->
 <template>
   <div class="customers-container">
     <!-- Header -->
@@ -11,7 +12,7 @@
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="Search by name, email, or ID..."
+        placeholder="Search by name or email..."
         @input="filterCustomers"
       />
     </div>
@@ -20,28 +21,37 @@
     <div class="filter-buttons">
       <button
         :class="['filter-button', { active: selectedStatus === 'all' }]"
-        @click="selectedStatus = 'all'"
+        @click="applyFilter('all')"
       >
         All
       </button>
       <button
         :class="['filter-button', { active: selectedStatus === 'active' }]"
-        @click="selectedStatus = 'active'"
+        @click="applyFilter('active')"
       >
         Active
       </button>
       <button
         :class="['filter-button', { active: selectedStatus === 'inactive' }]"
-        @click="selectedStatus = 'inactive'"
+        @click="applyFilter('inactive')"
       >
         Inactive
       </button>
       <button
         :class="['filter-button', { active: selectedStatus === 'suspended' }]"
-        @click="selectedStatus = 'suspended'"
+        @click="applyFilter('suspended')"
       >
         Suspended
       </button>
+    </div>
+
+    <!-- Sort Controls -->
+    <div class="sort-controls">
+      <label>Sort by: </label>
+      <select v-model="sortBy" @change="sortCustomers">
+        <option value="newest">Newest First</option>
+        <option value="oldest">Oldest First</option>
+      </select>
     </div>
 
     <!-- Loading & Error States -->
@@ -51,11 +61,11 @@
     <!-- Customers List -->
     <div v-else class="customers-list">
       <div
-        v-for="(customer, index) in filteredCustomers"
-        :key="customer.id"
+        v-for="(customer, index) in displayedCustomers"
+        :key="customer._id"
         class="customer-card"
-        :class="{ expanded: expandedId === customer.id }"
-        @click="toggleExpand(customer.id)"
+        :class="{ expanded: expandedId === customer._id }"
+        @click="toggleExpand(customer._id)"
       >
         <div class="customer-avatar">
           <img
@@ -71,9 +81,12 @@
         <div class="customer-info">
           <div class="customer-name">{{ customer.fullname }}</div>
           <div class="customer-email">{{ customer.email }}</div>
-          
+          <div class="customer-date">
+            Joined: {{ formatDate(customer.createdAt) }}
+          </div>
+
           <!-- Expanded details -->
-          <div v-if="expandedId === customer.id" class="expanded-details">
+          <div v-if="expandedId === customer._id" class="expanded-details">
             <div class="detail-row">
               <span class="detail-label">Phone:</span>
               <span>{{ customer.phonenumber || '—' }}</span>
@@ -87,7 +100,7 @@
 
         <div class="customer-status">
           <span :class="['status-dot', normalizeStatus(customer.status)]"></span>
-          <span class="status-text">{{ customer.status || 'Unknown' }}</span>
+          <span class="status-text">{{ formattedStatus(customer.status) }}</span>
         </div>
 
         <!-- Three-dot menu with dropdown -->
@@ -99,7 +112,6 @@
             ⋮
           </button>
 
-          <!-- Dropdown Menu - ONLY for this customer -->
           <div
             v-show="openMenus[index]"
             class="dropdown-menu"
@@ -127,7 +139,7 @@
         </div>
       </div>
 
-      <div v-if="filteredCustomers.length === 0" class="no-results">
+      <div v-if="displayedCustomers.length === 0" class="no-results">
         No customers found
       </div>
     </div>
@@ -138,70 +150,72 @@
         <span>+</span>
       </button>
     </div>
+
     <!-- Add Customer Modal -->
-<div v-if="showAddModal" class="modal-overlay" @click="closeModal">
-  <div class="modal-content" @click.stop>
-    <div class="modal-header">
-      <h2>Add New Customer</h2>
-      <button class="close-btn" @click="closeModal">×</button>
+    <div v-if="showAddModal" class="modal-overlay" @click="closeModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h2>Add New Customer</h2>
+          <button class="close-btn" @click="closeModal">×</button>
+        </div>
+
+        <form @submit.prevent="submitNewCustomer" class="add-form">
+          <div class="form-group">
+            <label>Full Name *</label>
+            <input v-model="newCustomer.fullname" type="text" required />
+          </div>
+
+          <div class="form-group">
+            <label>Email *</label>
+            <input v-model="newCustomer.email" type="email" required />
+          </div>
+
+          <div class="form-group">
+            <label>Password *</label>
+            <input v-model="newCustomer.password" type="password" required />
+          </div>
+
+          <div class="form-group">
+            <label>Confirm Password *</label>
+            <input v-model="newCustomer.confirmPassword" type="password" required />
+            <p v-if="passwordMismatch" class="error-text">Passwords do not match</p>
+          </div>
+
+          <div class="form-group">
+            <label>Phone Number *</label>
+            <input v-model="newCustomer.phonenumber" type="text" required />
+          </div>
+
+          <div class="form-group">
+            <label>Address *</label>
+            <textarea v-model="newCustomer.address" rows="2" required></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn-cancel" @click="closeModal">Cancel</button>
+            <button type="submit" class="btn-submit" :disabled="isSubmitting">
+              {{ isSubmitting ? 'Adding...' : 'Add Customer' }}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
-
-    <form @submit.prevent="submitNewCustomer" class="add-form">
-      <div class="form-group">
-        <label>Full Name *</label>
-        <input v-model="newCustomer.fullname" type="text" required />
-      </div>
-
-      <div class="form-group">
-        <label>Email *</label>
-        <input v-model="newCustomer.email" type="email" required />
-      </div>
-
-      <div class="form-group">
-        <label>Password *</label>
-        <input v-model="newCustomer.password" type="password" required />
-      </div>
-
-      <div class="form-group">
-        <label>Confirm Password *</label>
-        <input v-model="newCustomer.confirmPassword" type="password" required />
-        <p v-if="passwordMismatch" class="error-text">Passwords do not match</p>
-      </div>
-
-      <div class="form-group">
-        <label>Phone Number *</label>
-        <input v-model="newCustomer.phonenumber" type="text" required />
-      </div>
-
-      <div class="form-group">
-        <label>Address *</label>
-        <textarea v-model="newCustomer.address" rows="2" required></textarea>
-      </div>
-
-      <div class="form-actions">
-        <button type="button" class="btn-cancel" @click="closeModal">Cancel</button>
-        <button type="submit" class="btn-submit" :disabled="isSubmitting">
-          {{ isSubmitting ? 'Adding...' : 'Add Customer' }}
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, onBeforeUnmount } from 'vue';
+import { ref, onMounted, computed, onBeforeUnmount, watch, nextTick } from 'vue';
 import http from '../api/http';
+import { useRoute, useRouter } from 'vue-router';
 
 const customers = ref([]);
 const searchQuery = ref('');
 const selectedStatus = ref('all');
+const sortBy = ref('newest');
 const loading = ref(false);
 const error = ref('');
 const openMenus = ref([]);
 const expandedId = ref(null);
-// Add customer modal state
 const showAddModal = ref(false);
 const newCustomer = ref({
   fullname: '',
@@ -213,6 +227,8 @@ const newCustomer = ref({
 });
 const isSubmitting = ref(false);
 const passwordMismatch = ref(false);
+const route = useRoute();
+const router = useRouter();
 
 const handleClickOutside = (e) => {
   if (!e.target.closest('.customer-actions')) {
@@ -221,6 +237,15 @@ const handleClickOutside = (e) => {
 };
 
 onMounted(() => {
+  const urlStatus = route.query.status;
+  if (urlStatus && ['all', 'active', 'inactive', 'suspended'].includes(urlStatus)) {
+    selectedStatus.value = urlStatus;
+  }
+  const urlSort = route.query.sort;
+  if (urlSort && ['newest', 'oldest'].includes(urlSort)) {
+    sortBy.value = urlSort;
+  }
+  
   fetchCustomers();
   document.addEventListener('click', handleClickOutside);
 });
@@ -233,26 +258,75 @@ const fetchCustomers = async () => {
   loading.value = true;
   error.value = '';
   try {
-    const res = await http.get('/users/customers');
-    const rawCustomers = Array.isArray(res.data) ? res.data : [];
+    let url = '/users/customers';
+    if (selectedStatus.value !== 'all') {
+      url += `?status=${selectedStatus.value}`;
+    }
 
-    // ✅ CRITICAL: Ensure unique `id` — use email as fallback if needed
-    customers.value = rawCustomers.map(customer => ({
-      id: customer.id || customer.email, // ← THIS IS KEY
-      fullname: customer.fullname?.trim() || 'Unnamed Customer',
-      email: customer.email?.trim() || 'No email',
-      phonenumber: customer.phonenumber?.trim() || '—',
-      address: customer.address || '—',
-      status: customer.status || 'active'
-    }));
+    const res = await http.get(url);
+    const rawUsers = Array.isArray(res.data) ? res.data : [];
+
+    customers.value = rawUsers.map((user) => {
+      const profile = user.customerProfile || {};
+      return {
+        _id: user._id,
+        fullname: profile.fullname?.trim() || 'Unnamed Customer',
+        email: profile.email?.trim() || 'no-email@example.com',
+        phonenumber: profile.phonenumber?.trim() || '—',
+        address: profile.address || '—',
+        status: profile.status || 'unknown',
+        createdAt: profile.createdAt || user.createdAt || null,
+        avatar: profile.avatar || null
+      };
+    });
 
     openMenus.value = new Array(customers.value.length).fill(false);
+    expandedId.value = null;
+    nextTick(() => sortCustomers());
   } catch (e) {
     console.error('Failed to fetch customers:', e);
     error.value = 'Failed to load customers. Please try again later.';
+    customers.value = [];
   } finally {
     loading.value = false;
   }
+};
+
+const applyFilter = (status) => {
+  router.push({
+    query: { ...route.query, status: status === 'all' ? undefined : status }
+  });
+  selectedStatus.value = status;
+  fetchCustomers();
+};
+
+const sortCustomers = () => {
+  let sorted = [...customers.value];
+  
+  if (sortBy.value === 'newest') {
+    sorted = sorted.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return dateB - dateA;
+    });
+  } else {
+    sorted = sorted.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return dateA - dateB;
+    });
+  }
+  
+  // Apply search filter
+  if (searchQuery.value.trim()) {
+    const term = searchQuery.value.toLowerCase().trim();
+    sorted = sorted.filter(c =>
+      c.fullname.toLowerCase().includes(term) ||
+      c.email.toLowerCase().includes(term)
+    );
+  }
+  
+  displayedCustomers.value = sorted;
 };
 
 const toggleMenu = (index) => {
@@ -260,40 +334,27 @@ const toggleMenu = (index) => {
 };
 
 const toggleExpand = (id) => {
-  // ✅ This is already correct — only toggles the clicked customer
-  expandedId.value = expandedId.value === email ? null : email;
+  expandedId.value = expandedId.value === id ? null : id;
 };
 
-const normalizeStatus = (status) => {
-  return status ? status.toLowerCase() : 'inactive';
-};
-
-const isSuspendable = (status) => {
-  return normalizeStatus(status) === 'active';
-};
-
-const isActivatable = (status) => {
-  return normalizeStatus(status) !== 'active';
-};
+const normalizeStatus = (status) => (status?.toLowerCase() || 'inactive');
+const formattedStatus = (status) => (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown');
+const isSuspendable = (status) => normalizeStatus(status) === 'active';
+const isActivatable = (status) => normalizeStatus(status) !== 'active';
 
 const updateStatus = async (customer, newStatus) => {
   try {
-    await http.patch(`/users/customers/${customer.email}`, {
+    await http.patch('/users/customers/status', {
+      email: customer.email,
       status: newStatus
     });
 
-    const idx = customers.value.findIndex(c => c.email === customer.email);
+    const idx = customers.value.findIndex(c => c._id === customer._id);
     if (idx !== -1) {
-      customers.value[idx] = {
-        ...customers.value[idx],
-        status: newStatus.charAt(0).toUpperCase() + newStatus.slice(1)
-      };
+      customers.value[idx].status = newStatus;
     }
 
-    const menuIndex = filteredCustomers.value.findIndex(c => c.email === customer.email);
-    if (menuIndex !== -1) {
-      openMenus.value[menuIndex] = false;
-    }
+    openMenus.value = openMenus.value.map(() => false);
   } catch (e) {
     console.error('Failed to update status:', e);
     alert('Failed to update customer status. Please try again.');
@@ -304,56 +365,43 @@ const deleteCustomer = async (customer) => {
   if (!confirm(`Are you sure you want to delete ${customer.fullname}?`)) return;
 
   try {
-    await http.delete(`/users/customers/${customer.email}`);
-    customers.value = customers.value.filter(c => c.email !== customer.email);
-    openMenus.value = new Array(customers.value.length).fill(false);
-    
-    if (expandedId.value === customer.id) {
+    await http.delete(`/users/${encodeURIComponent(customer._id)}`);
+    customers.value = customers.value.filter(c => c._id !== customer._id);
+    openMenus.value = openMenus.value.map(() => false);
+    if (expandedId.value === customer._id) {
       expandedId.value = null;
     }
+    alert('Customer deleted successfully!');
   } catch (e) {
     console.error('Failed to delete customer:', e);
     alert('Failed to delete customer. Please try again.');
   }
 };
 
-const filteredCustomers = computed(() => {
-  let result = [...customers.value];
+const displayedCustomers = ref([]);
 
-  if (searchQuery.value.trim()) {
-    const term = searchQuery.value.toLowerCase().trim();
-    result = result.filter((c) =>
-      c.fullname.toLowerCase().includes(term) ||
-      c.email.toLowerCase().includes(term)
-    );
-  }
+const filterCustomers = () => {
+  nextTick(() => sortCustomers());
+};
 
-  if (selectedStatus.value !== 'all') {
-    result = result.filter(
-      (c) =>
-        c.status &&
-        normalizeStatus(c.status) === selectedStatus.value.toLowerCase()
-    );
-  }
+const formatDate = (dateString) => {
+  if (!dateString) return '—';
+  return new Date(dateString).toLocaleDateString();
+};
 
-  return result;
-});
-
-const filterCustomers = () => {};
 const addNewCustomer = () => {
-  // Reset form
   newCustomer.value = {
     fullname: '',
     email: '',
     password: '',
     confirmPassword: '',
     address: '',
-    phonenumber: '',
-    role:''
+    phonenumber: ''
   };
   passwordMismatch.value = false;
   showAddModal.value = true;
 };
+
 const closeModal = () => {
   showAddModal.value = false;
 };
@@ -365,14 +413,25 @@ const submitNewCustomer = async () => {
   }
   passwordMismatch.value = false;
 
+  const fullname = newCustomer.value.fullname.trim();
+  const email = newCustomer.value.email.trim();
+  const password = newCustomer.value.password;
+  const address = newCustomer.value.address.trim();
+  const phonenumber = newCustomer.value.phonenumber.trim();
+
+  if (!fullname || !email || !password || !address || !phonenumber) {
+    alert('All fields are required.');
+    return;
+  }
+
   isSubmitting.value = true;
   try {
     await http.post('/users/customers', {
-      fullname: newCustomer.value.fullname,
-      email: newCustomer.value.email,
-      password: newCustomer.value.password,
-      address: newCustomer.value.address,
-      phonenumber: newCustomer.value.phonenumber,
+      fullname,
+      email,
+      password,
+      address,
+      phonenumber,
       role: 'customer'
     });
 
@@ -380,157 +439,40 @@ const submitNewCustomer = async () => {
     closeModal();
     alert('Customer added successfully!');
   } catch (e) {
-    console.error('Full error:', e); // 👈 THIS IS CRITICAL
-
-    // Check if it's an Axios error with response
-    if (e.response) {
-      console.error('Backend responded with:', e.response.status, e.response.data);
-      alert(`Registration failed: ${e.response.data?.message || 'Unknown error'}`);
-    } else if (e.request) {
-      console.error('No response received:', e.request);
-      alert('Network error. Please check your connection.');
+    console.error('Full error:', e);
+    if (e.response?.data?.message) {
+      alert(`Error: ${e.response.data.message}`);
+    } else if (e.response?.status === 500) {
+      alert('Server error. Please check if email is already registered.');
     } else {
-      console.error('Error setting up request:', e.message);
-      alert('Request setup failed.');
+      alert('Failed to add customer. Please try again.');
     }
   } finally {
     isSubmitting.value = false;
   }
 };
+
+// Watch URL changes
+watch(() => route.query.status, (newStatus) => {
+  if (newStatus && ['all', 'active', 'inactive', 'suspended'].includes(newStatus)) {
+    applyFilter(newStatus);
+  }
+});
+
+// Watch sort changes
+watch(sortBy, (newSort) => {
+  router.push({
+    query: { ...route.query, sort: newSort }
+  });
+  sortCustomers();
+});
 </script>
 
 <style scoped>
-/* Keep all your styles, with minor additions for expanded view */
-/* Modal Styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e0e5ff;
-}
-
-.modal-header h2 {
-  font-size: 20px;
-  font-weight: bold;
-  margin: 0;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #666;
-}
-
-.close-btn:hover {
-  color: #333;
-}
-
-.add-form {
-  padding: 20px;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 500;
-  color: #333;
-}
-
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: border-color 0.2s;
-}
-
-.form-group input:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #5a6cff;
-}
-
-.error-text {
-  color: #ff5252;
-  font-size: 12px;
-  margin-top: 4px;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.btn-cancel,
-.btn-submit {
-  padding: 8px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.btn-cancel {
-  background: #eee;
-  border: none;
-  color: #333;
-}
-
-.btn-cancel:hover {
-  background: #ddd;
-}
-
-.btn-submit {
-  background: #4285f4;
-  color: white;
-  border: none;
-}
-
-.btn-submit:hover:not(:disabled) {
-  background: #3367d6;
-}
-
-.btn-submit:disabled {
-  background: #cccccc;
-  cursor: not-allowed;
-}
+/* ... your existing customer styles + new sort controls ... */
 .customers-container {
-  font-family: Arial, sans-serif;
-  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  padding: 16px;
   background-color: #f5f7fa;
   min-height: 100vh;
 }
@@ -578,7 +520,7 @@ const submitNewCustomer = async () => {
 .filter-buttons {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
@@ -596,6 +538,27 @@ const submitNewCustomer = async () => {
   background-color: #4285f4;
   color: white;
   border-color: #4285f4;
+}
+
+.sort-controls {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 8px;
+}
+
+.sort-controls label {
+  font-weight: 500;
+  color: #333;
+}
+
+.sort-controls select {
+  padding: 6px 12px;
+  border: 1px solid #e0e5ff;
+  border-radius: 6px;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
 }
 
 .status-message {
@@ -619,7 +582,7 @@ const submitNewCustomer = async () => {
   border-radius: 12px;
   padding: 15px;
   display: flex;
-  align-items: flex-start; /* allow vertical growth */
+  align-items: flex-start;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   position: relative;
   cursor: pointer;
@@ -663,7 +626,7 @@ const submitNewCustomer = async () => {
 
 .customer-info {
   flex-grow: 1;
-  min-width: 0; /* prevent overflow */
+  min-width: 0;
 }
 
 .customer-name {
@@ -676,10 +639,15 @@ const submitNewCustomer = async () => {
 .customer-email {
   font-size: 14px;
   color: #666;
+  margin-bottom: 4px;
+}
+
+.customer-date {
+  font-size: 12px;
+  color: #888;
   margin-bottom: 8px;
 }
 
-/* Expanded details */
 .expanded-details {
   margin-top: 10px;
   padding-top: 10px;
@@ -703,8 +671,8 @@ const submitNewCustomer = async () => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  margin-left: 10px; /* ← added spacing */
-  margin-right: 25px; /* ← space for 3-dot menu */
+  margin-left: 10px;
+  margin-right: 25px;
   flex-shrink: 0;
 }
 
@@ -836,5 +804,249 @@ const submitNewCustomer = async () => {
 .add-customer-button button:hover {
   background-color: #3367d6;
   transform: scale(1.05);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e5ff;
+}
+
+.modal-header h2 {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.close-btn:hover {
+  color: #333;
+}
+
+.add-form {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #5a6cff;
+}
+
+.error-text {
+  color: #ff5252;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.btn-cancel,
+.btn-submit {
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-cancel {
+  background: #eee;
+  border: none;
+  color: #333;
+}
+
+.btn-cancel:hover {
+  background: #ddd;
+}
+
+.btn-submit {
+  background: #4285f4;
+  color: white;
+  border: none;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #3367d6;
+}
+
+.btn-submit:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+}
+/* Add to bottom of <style> in both files */
+@media (max-width: 768px) {
+  .customers-container,
+  .providers-container {
+    padding: 12px;
+  }
+  
+  .header h1 {
+    font-size: 20px;
+  }
+  
+  .search-bar input {
+    padding: 10px 16px;
+    font-size: 15px;
+  }
+  
+  .filter-buttons {
+    gap: 6px;
+  }
+  
+  .filter-button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  .sort-controls {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .sort-controls select {
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+  
+  /* Card layout adjustments */
+  .customer-card,
+  .provider-card {
+    padding: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .customer-avatar,
+  .provider-avatar {
+    margin-right: 0;
+    margin-bottom: 12px;
+  }
+  
+  .customer-info,
+  .provider-info {
+    width: 100%;
+    margin-bottom: 12px;
+  }
+  
+  .customer-status,
+  .provider-status-container {
+    margin: 0 0 12px 0;
+    align-self: flex-start;
+  }
+  
+  .customer-actions,
+  .provider-actions {
+    position: static;
+    align-self: flex-end;
+  }
+  
+  .customer-date,
+  .provider-date {
+    font-size: 11px;
+    margin-top: 4px;
+  }
+  
+  /* Modal full-screen on mobile */
+  .modal-content {
+    width: 95%;
+    margin: 10px;
+    max-height: 90vh;
+  }
+  
+  .add-customer-button,
+  .add-provider-button {
+    bottom: 20px;
+    right: 20px;
+  }
+  
+  .add-customer-button button,
+  .add-provider-button button {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header h1 {
+    font-size: 18px;
+  }
+  
+  .metric-value {
+    font-size: 22px;
+  }
+  
+  .customer-name,
+  .provider-name {
+    font-size: 15px;
+  }
+  
+  .bottom-navigation {
+    padding: 6px 0;
+  }
+  
+  .nav-icon {
+    font-size: 20px;
+  }
 }
 </style>

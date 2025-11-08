@@ -1,3 +1,4 @@
+<!-- src/views/Dashboard.vue -->
 <template>
   <div class="dashboard-container">
     <!-- Header -->
@@ -19,11 +20,11 @@
     <div class="time-period-toggle">
       <button 
         v-for="period in timePeriods" 
-        :key="period" 
-        :class="{ 'active': selectedPeriod === period }"
-        @click="selectedPeriod = period"
+        :key="period.value" 
+        :class="{ 'active': selectedPeriod === period.value }"
+        @click="selectedPeriod = period.value"
       >
-        {{ period }}
+        {{ period.label }}
       </button>
     </div>
 
@@ -31,20 +32,42 @@
     <div v-if="loading" class="status-message">Loading dashboard...</div>
     <div v-else-if="error" class="status-message error">{{ error }}</div>
 
-    <!-- Metrics Grid -->
-    <div v-else class="metrics-grid">
-      <div 
-        v-for="metric in metrics" 
-        :key="metric.title" 
-        class="metric-card"
-      >
-        <div class="metric-icon">{{ metric.icon }}</div>
-        <div class="metric-title">{{ metric.title }}</div>
-        <div class="metric-value">{{ metric.value }}</div>
+    <!-- TIME-BASED METRICS -->
+    <div v-else>
+      <h2 class="metrics-section-title">Recent Activity ({{ selectedPeriodLabel }})</h2>
+      <div class="metrics-grid">
         <div 
-          :class="['metric-change', { 'positive': metric.change >= 0, 'negative': metric.change < 0 }]"
+          v-for="metric in timeBasedMetrics" 
+          :key="metric.title" 
+          class="metric-card clickable"
+          @click="navigateToMetric(metric)"
         >
-          {{ metric.change >= 0 ? '+' : '' }}{{ metric.change }}%
+          <div class="metric-icon">{{ metric.icon }}</div>
+          <div class="metric-title">{{ metric.title }}</div>
+          <div class="metric-value">{{ metric.value }}</div>
+          <div 
+            :class="['metric-change', { 'positive': metric.change >= 0, 'negative': metric.change < 0 }]"
+          >
+            {{ metric.change >= 0 ? '+' : '' }}{{ Math.abs(metric.change) }}%
+          </div>
+        </div>
+      </div>
+
+      <!-- TOTAL METRICS -->
+      <h2 class="metrics-section-title">Total Overview</h2>
+      <div class="metrics-grid">
+        <div 
+          v-for="metric in totalMetrics" 
+          :key="metric.title" 
+          class="metric-card clickable"
+          @click="navigateToMetric(metric)"
+        >
+          <div class="metric-icon">{{ metric.icon }}</div>
+          <div class="metric-title">{{ metric.title }}</div>
+          <div class="metric-value">{{ metric.value }}</div>
+          <div class="metric-change static">
+            {{ metric.subtitle || '' }}
+          </div>
         </div>
       </div>
     </div>
@@ -80,15 +103,14 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { ref, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import http from '../api/http';
 
 export default {
   name: 'AdminDashboard',
   setup() {
     const router = useRouter();
-    const route = useRoute();
 
     const isActive = (title) => {
       const pathMap = {
@@ -97,7 +119,7 @@ export default {
         'Customers': '/customers',
         'Settings': '/settings'
       };
-      return route.path === pathMap[title];
+      return window.location.pathname === pathMap[title];
     };
 
     const navigateTo = (title) => {
@@ -120,14 +142,14 @@ export default {
   },
   data() {
     return {
-      selectedPeriod: 'This Week',
-      timePeriods: ['Today', 'This Week', 'This Month'],
-      metrics: [
-        { title: 'New Customers', value: '—', change: 0, icon: '👤+' },
-        { title: 'Active Providers', value: '—', change: 0, icon: '👥' },
-        { title: 'Active Customers', value: '—', change: 0, icon: '👥' },
-        { title: 'Pending Approvals', value: '—', change: 0, icon: '📋' }
+      selectedPeriod: 'today',
+      timePeriods: [
+        { label: 'Today', value: 'today' },
+        { label: 'This Week', value: 'this-week' },
+        { label: 'This Month', value: 'this-month' }
       ],
+      timeBasedMetrics: [],
+      totalMetrics: [],
       loading: false,
       error: '',
       quickActions: [
@@ -142,12 +164,17 @@ export default {
         { title: 'Customers', icon: '👥' },
         { title: 'Settings', icon: '⚙️' }
       ],
-      rawProviders: [],
-      rawCustomers: []
+      allCustomers: [],
+      allProviders: []
     };
   },
+  computed: {
+    selectedPeriodLabel() {
+      return this.timePeriods.find(p => p.value === this.selectedPeriod)?.label || 'Period';
+    }
+  },
   async mounted() {
-    await this.fetchRawData();
+    await this.fetchAllData();
   },
   watch: {
     selectedPeriod() {
@@ -155,129 +182,297 @@ export default {
     }
   },
   methods: {
-    async fetchRawData() {
+    async fetchAllData() {
       this.loading = true;
       this.error = '';
       
       try {
-        const [providersRes, customersRes] = await Promise.all([
-          http.get('/users/providers'),
-          http.get('/users/customers')
+        const [customersRes, providersRes] = await Promise.all([
+          http.get('/users/customers'),
+          http.get('/users/providers')
         ]);
 
-        this.rawProviders = Array.isArray(providersRes.data) ? providersRes.data : [];
-        this.rawCustomers = Array.isArray(customersRes.data) ? customersRes.data : [];
+        this.allCustomers = Array.isArray(customersRes.data) ? customersRes.data.map(user => ({
+          _id: user._id,
+          ...user.customerProfile,
+          status: user.customerProfile?.status || 'unknown',
+          createdAt: user.customerProfile?.createdAt || user.createdAt
+        })) : [];
 
-        // 🔍 Debug: Log raw data
-        console.log('Fetched Customers:', this.rawCustomers.map(c => ({
-          email: c.email,
-          fullname: c.fullname,
-          created_at: c.created_at,
-          status: c.status
-        })));
-        console.log('Fetched Providers:', this.rawProviders.map(p => ({
-          email: p.email,
-          fullname: p.fullname,
-          created_at: p.created_at,
-          status: p.status
-        })));
+        this.allProviders = Array.isArray(providersRes.data) ? providersRes.data.map(user => ({
+          _id: user._id,
+          ...user.providerProfile,
+          status: user.providerProfile?.status || 'pending',
+          createdAt: user.providerProfile?.createdAt || user.createdAt
+        })) : [];
 
         this.calculateMetrics();
       } catch (error) {
-        console.error('Failed to fetch dashboard ', error);
+        console.error('Failed to fetch dashboard data:', error);
         this.error = 'Failed to load dashboard data. Please try again later.';
+        this.timeBasedMetrics = this.getDefaultTimeMetrics();
+        this.totalMetrics = this.getDefaultTotalMetrics();
       } finally {
         this.loading = false;
       }
     },
 
-    getPeriodRange(period) {
-      const now = new Date();
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-
-      if (period === 'Today') {
-        return { start, end: new Date(now) };
-      } else if (period === 'This Week') {
-        const day = start.getDay();
-        start.setDate(start.getDate() - day);
-        return { start, end: new Date(now) };
-      } else if (period === 'This Month') {
-        start.setDate(1);
-        return { start, end: new Date(now) };
-      }
-      return { start, end: new Date(now) };
+    getDefaultTimeMetrics() {
+      return [
+        { title: 'New Customers', value: '—', change: 0, icon: '👤+', route: '/customers', statusFilter: 'all' },
+        { title: 'New Providers', value: '—', change: 0, icon: '👤+', route: '/providers', statusFilter: 'all' },
+        { title: 'New Active Customers', value: '—', change: 0, icon: '✅', route: '/customers', statusFilter: 'active' },
+        { title: 'New Active Providers', value: '—', change: 0, icon: '✅', route: '/providers', statusFilter: 'active' },
+        { title: 'New Suspended Customers', value: '—', change: 0, icon: '⛔', route: '/customers', statusFilter: 'suspended' },
+        { title: 'New Suspended Providers', value: '—', change: 0, icon: '⛔', route: '/providers', statusFilter: 'suspended' },
+        { title: 'New Pending Providers', value: '—', change: 0, icon: '⏳', route: '/providers', statusFilter: 'pending' }
+      ];
     },
 
-    // ✅ Safe date parser
-    parseDate(dateStr) {
-      if (!dateStr) return new Date(0);
-      try {
-        return new Date(dateStr);
-      } catch {
-        return new Date(0);
+    getDefaultTotalMetrics() {
+      return [
+        { title: 'Total Customers', value: '—', icon: '👥', route: '/customers', statusFilter: 'all', subtitle: 'All statuses' },
+        { title: 'Total Providers', value: '—', icon: '🔧', route: '/providers', statusFilter: 'all', subtitle: 'All statuses' },
+        { title: 'Active Customers', value: '—', icon: '✅', route: '/customers', statusFilter: 'active', subtitle: 'Currently active' },
+        { title: 'Active Providers', value: '—', icon: '✅', route: '/providers', statusFilter: 'active', subtitle: 'Currently active' },
+        { title: 'Inactive Customers', value: '—', icon: '⏸️', route: '/customers', statusFilter: 'inactive', subtitle: 'Deactivated' },
+        { title: 'Inactive Providers', value: '—', icon: '⏸️', route: '/providers', statusFilter: 'inactive', subtitle: 'Deactivated' },
+        { title: 'Suspended Customers', value: '—', icon: '⛔', route: '/customers', statusFilter: 'suspended', subtitle: 'Temporarily blocked' },
+        { title: 'Suspended Providers', value: '—', icon: '⛔', route: '/providers', statusFilter: 'suspended', subtitle: 'Temporarily blocked' },
+        { title: 'Pending Approvals', value: '—', icon: '⏳', route: '/providers', statusFilter: 'pending', subtitle: 'Awaiting review' }
+      ];
+    },
+
+    getDateRange(period) {
+      const now = new Date();
+      let startDate = new Date();
+      
+      if (period === 'today') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else if (period === 'this-week') {
+        const day = now.getDay();
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
+      } else if (period === 'this-month') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       }
+      
+      return startDate;
+    },
+
+    getPreviousPeriodRange(period) {
+      const now = new Date();
+      let startDate = new Date();
+      
+      if (period === 'today') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      } else if (period === 'this-week') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() - 7);
+      } else if (period === 'this-month') {
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      }
+      
+      return startDate;
+    },
+
+    countInPeriod(users, periodStart) {
+      return users.filter(user => {
+        const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+        return createdAt && createdAt >= periodStart;
+      });
+    },
+
+    getStatusCount(users, status) {
+      return users.filter(user => 
+        (user.status || '').toLowerCase() === status.toLowerCase()
+      ).length;
     },
 
     calculateMetrics() {
-      const { start, end } = this.getPeriodRange(this.selectedPeriod);
-
-      // ✅ Filter customers
-      const newCustomers = this.rawCustomers.filter(customer => {
-        const joined = this.parseDate(customer.created_at);
-        return joined >= start && joined <= end;
-      }).length;
-
-      // ✅ Active Customers = all customers (since no status)
-      const activeCustomers = newCustomers;
-
-      // ✅ Filter providers
-      const pendingProviders = this.rawProviders.filter(provider => {
-        const created = this.parseDate(provider.created_at || provider.registered_at);
-        return (
-          ['pending', 'awaiting'].includes((provider.status || '').toLowerCase()) &&
-          created >= start && created <= end
-        );
-      }).length;
-
-      const activeProviders = this.rawProviders.filter(provider => {
-        const created = this.parseDate(provider.created_at || provider.registered_at);
-        return (
-          ['active', 'approved'].includes((provider.status || '').toLowerCase()) &&
-          created >= start && created <= end
-        );
-      }).length;
-
-      this.metrics = [
+      const currentStart = this.getDateRange(this.selectedPeriod);
+      const prevStart = this.getPreviousPeriodRange(this.selectedPeriod);
+      
+      const currentNewCustomers = this.countInPeriod(this.allCustomers, currentStart);
+      const currentNewProviders = this.countInPeriod(this.allProviders, currentStart);
+      const prevNewCustomers = this.countInPeriod(this.allCustomers, prevStart);
+      const prevNewProviders = this.countInPeriod(this.allProviders, prevStart);
+      
+      // Time-based metrics (within period)
+      const newActiveCustomers = currentNewCustomers.filter(c => c.status === 'active').length;
+      const newActiveProviders = currentNewProviders.filter(p => p.status === 'active').length;
+      const newSuspendedCustomers = currentNewCustomers.filter(c => c.status === 'suspended').length;
+      const newSuspendedProviders = currentNewProviders.filter(p => p.status === 'suspended').length;
+      const newPendingProviders = currentNewProviders.filter(p => p.status === 'pending').length;
+      
+      // Calculate changes
+      const calcChange = (current, previous) => {
+        if (previous === 0) return current > 0 ? 100 : 0;
+        return Math.round(((current - previous) / previous) * 100);
+      };
+      
+      this.timeBasedMetrics = [
         { 
           title: 'New Customers', 
-          value: this.formatNumber(newCustomers), 
-          change: 0, 
-          icon: '👤+' 
+          value: this.formatNumber(currentNewCustomers.length), 
+          change: calcChange(currentNewCustomers.length, prevNewCustomers.length), 
+          icon: '👤+',
+          route: '/customers',
+          statusFilter: 'all'
         },
         { 
-          title: 'Active Providers', 
-          value: this.formatNumber(activeProviders), 
+          title: 'New Providers', 
+          value: this.formatNumber(currentNewProviders.length), 
+          change: calcChange(currentNewProviders.length, prevNewProviders.length), 
+          icon: '👤+',
+          route: '/providers',
+          statusFilter: 'all'
+        },
+        { 
+          title: ' Active Customers', 
+          value: this.formatNumber(newActiveCustomers), 
           change: 0, 
-          icon: '👥' 
+          icon: '✅',
+          route: '/customers',
+          statusFilter: 'active'
+        },
+        { 
+          title: ' Active Providers', 
+          value: this.formatNumber(newActiveProviders), 
+          change: 0, 
+          icon: '✅',
+          route: '/providers',
+          statusFilter: 'active'
+        },
+        { 
+          title: 'Suspended Customers', 
+          value: this.formatNumber(newSuspendedCustomers), 
+          change: 0, 
+          icon: '⛔',
+          route: '/customers',
+          statusFilter: 'suspended'
+        },
+        { 
+          title: ' Suspended Providers', 
+          value: this.formatNumber(newSuspendedProviders), 
+          change: 0, 
+          icon: '⛔',
+          route: '/providers',
+          statusFilter: 'suspended'
+        },
+        { 
+          title: 'Pending Providers', 
+          value: this.formatNumber(newPendingProviders), 
+          change: 0, 
+          icon: '⏳',
+          route: '/providers',
+          statusFilter: 'pending'
+        }
+      ];
+      
+      // Total metrics (all time)
+      const totalCustomers = this.allCustomers.length;
+      const totalProviders = this.allProviders.length;
+      const activeCustomers = this.getStatusCount(this.allCustomers, 'active');
+      const activeProviders = this.getStatusCount(this.allProviders, 'active');
+      const inactiveCustomers = this.getStatusCount(this.allCustomers, 'inactive');
+      const inactiveProviders = this.getStatusCount(this.allProviders, 'inactive');
+      const suspendedCustomers = this.getStatusCount(this.allCustomers, 'suspended');
+      const suspendedProviders = this.getStatusCount(this.allProviders, 'suspended');
+      const pendingProviders = this.getStatusCount(this.allProviders, 'pending');
+      
+      this.totalMetrics = [
+        { 
+          title: 'Total Customers', 
+          value: this.formatNumber(totalCustomers), 
+          icon: '👥',
+          route: '/customers',
+          statusFilter: 'all',
+          subtitle: 'All statuses'
+        },
+        { 
+          title: 'Total Providers', 
+          value: this.formatNumber(totalProviders), 
+          icon: '🔧',
+          route: '/providers',
+          statusFilter: 'all',
+          subtitle: 'All statuses'
         },
         { 
           title: 'Active Customers', 
           value: this.formatNumber(activeCustomers), 
-          change: 0, 
-          icon: '👥' 
+          icon: '✅',
+          route: '/customers',
+          statusFilter: 'active',
+          subtitle: 'Currently active'
+        },
+        { 
+          title: 'Active Providers', 
+          value: this.formatNumber(activeProviders), 
+          icon: '✅',
+          route: '/providers',
+          statusFilter: 'active',
+          subtitle: 'Currently active'
+        },
+        { 
+          title: 'Inactive Customers', 
+          value: this.formatNumber(inactiveCustomers), 
+          icon: '⏸️',
+          route: '/customers',
+          statusFilter: 'inactive',
+          subtitle: 'Deactivated'
+        },
+        { 
+          title: 'Inactive Providers', 
+          value: this.formatNumber(inactiveProviders), 
+          icon: '⏸️',
+          route: '/providers',
+          statusFilter: 'inactive',
+          subtitle: 'Deactivated'
+        },
+        { 
+          title: 'Suspended Customers', 
+          value: this.formatNumber(suspendedCustomers), 
+          icon: '⛔',
+          route: '/customers',
+          statusFilter: 'suspended',
+          subtitle: 'Temporarily blocked'
+        },
+        { 
+          title: 'Suspended Providers', 
+          value: this.formatNumber(suspendedProviders), 
+          icon: '⛔',
+          route: '/providers',
+          statusFilter: 'suspended',
+          subtitle: 'Temporarily blocked'
         },
         { 
           title: 'Pending Approvals', 
           value: this.formatNumber(pendingProviders), 
-          change: 0, 
-          icon: '📋' 
+          icon: '⏳',
+          route: '/providers',
+          statusFilter: 'pending',
+          subtitle: 'Awaiting review'
         }
       ];
     },
 
     formatNumber(num) {
       return new Intl.NumberFormat().format(num);
+    },
+
+    navigateToMetric(metric) {
+      if (metric.route) {
+        if (metric.statusFilter && metric.statusFilter !== 'all') {
+          this.$router.push({
+            path: metric.route,
+            query: { 
+              status: metric.statusFilter,
+              period: this.selectedPeriod // Optional: pass period for time-based views
+            }
+          });
+        } else {
+          this.$router.push(metric.route);
+        }
+      }
     },
 
     handleAction(action) {
@@ -290,7 +485,7 @@ export default {
 </script>
 
 <style scoped>
-/* Your existing styles */
+/* ... your existing dashboard styles ... */
 .dashboard-container {
   font-family: Arial, sans-serif;
   max-width: 100%;
@@ -350,7 +545,9 @@ export default {
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s ease;
-  width: 300px;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .time-period-toggle button.active {
@@ -368,11 +565,20 @@ export default {
   color: #ff5252;
 }
 
+.metrics-section-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin: 24px 0 16px 0;
+  color: #333;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e5ff;
+}
+
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 
 .metric-card {
@@ -384,6 +590,16 @@ export default {
   flex-direction: column;
 }
 
+.metric-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.metric-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
 .metric-icon {
   background-color: #e0e5ff;
   border-radius: 8px;
@@ -393,7 +609,7 @@ export default {
   align-items: center;
   justify-content: center;
   margin-bottom: 10px;
-  font-size: 21px;
+  font-size: 20px;
 }
 
 .metric-title {
@@ -409,8 +625,13 @@ export default {
 }
 
 .metric-change {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
+}
+
+.metric-change.static {
+  color: #888;
+  font-style: italic;
 }
 
 .metric-change.positive {
@@ -503,5 +724,55 @@ export default {
 .nav-title {
   font-size: 12px;
   text-align: center;
+}
+
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 12px;
+  }
+  
+  .header-center h1 {
+    font-size: 20px;
+  }
+  
+  .time-period-toggle {
+    padding: 8px;
+  }
+  
+  .time-period-toggle button {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+  
+  .metrics-grid {
+    grid-template-columns: 1fr; /* Single column on mobile */
+    gap: 16px;
+  }
+  
+  .metric-card {
+    padding: 16px;
+  }
+  
+  .metric-value {
+    font-size: 24px;
+  }
+  
+  .quick-action-item {
+    padding: 12px 16px;
+  }
+  
+  .bottom-navigation {
+    left: 0; /* Full width on mobile */
+    right: 0;
+    padding: 8px 0;
+  }
+  
+  .nav-item {
+    padding: 8px 4px;
+  }
+  
+  .nav-title {
+    font-size: 11px;
+  }
 }
 </style>

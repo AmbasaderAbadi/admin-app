@@ -53,11 +53,18 @@
         <router-view />
       </main>
     </div>
+
+    <!-- Mobile Overlay (ONLY FOR MOBILE) -->
+    <div 
+      v-if="isMobile && isSidebarExpanded" 
+      class="mobile-overlay"
+      @click="closeSidebarOnMobile"
+    ></div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 
 const router = useRouter();
@@ -66,6 +73,19 @@ const route = useRoute();
 // Sidebar state
 const isSidebarExpanded = ref(false);
 const isHamburgerHovered = ref(false);
+const isMobile = ref(false); // NEW: detect mobile
+
+// NEW: Detect mobile screens
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768;
+};
+
+// NEW: Close sidebar on mobile when clicking outside
+const closeSidebarOnMobile = () => {
+  if (isMobile.value) {
+    isSidebarExpanded.value = false;
+  }
+};
 
 // Toggle manually (click only)
 const toggleSidebarManually = () => {
@@ -73,7 +93,14 @@ const toggleSidebarManually = () => {
 };
 
 // Navigation helpers
-const to = (path) => router.push(path);
+const to = (path) => {
+  router.push(path);
+  // NEW: Close sidebar on mobile after navigation
+  if (isMobile.value) {
+    isSidebarExpanded.value = false;
+  }
+};
+
 const isActive = (p) => {
   if (p === '/') return route.path === '/';
   return route.path.startsWith(p);
@@ -83,11 +110,29 @@ const isActive = (p) => {
 const logout = () => {
   localStorage.removeItem('admin_token');
   router.push('/login');
+  // NEW: Close sidebar on mobile
+  if (isMobile.value) {
+    isSidebarExpanded.value = false;
+  }
 };
 
 const goSettings = () => {
   router.push('/settings');
+  // NEW: Close sidebar on mobile
+  if (isMobile.value) {
+    isSidebarExpanded.value = false;
+  }
 };
+
+// NEW: Lifecycle hooks for mobile detection
+onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile);
+});
 </script>
 
 <style scoped>
@@ -253,5 +298,72 @@ const goSettings = () => {
   overflow-y: auto;
   padding: 20px;
   background-color: #f8f9fa;
+}
+
+/* MOBILE-ONLY STYLES (added below your original styles) */
+@media (max-width: 768px) {
+  /* Make hamburger larger and more touch-friendly */
+  .hamburger-btn {
+    top: 15px;
+    left: 15px;
+    width: 44px;
+    height: 44px;
+    font-size: 24px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Hide tooltip on mobile (no hover) */
+  .tooltip {
+    display: none !important;
+  }
+  
+  /* Sidebar becomes a slide-in panel */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .sidebar.sidebar-expanded {
+    transform: translateX(0);
+  }
+  
+  /* Force sidebar content to be visible on mobile */
+  .sidebar .brand,
+  .sidebar .nav,
+  .sidebar .btn-ghost {
+    opacity: 1 !important;
+  }
+  
+  /* Main area takes full width on mobile */
+  .main-area {
+    margin-left: 0;
+  }
+  
+  /* Add mobile overlay */
+  .mobile-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 998;
+  }
+  
+  /* Adjust header padding for mobile */
+  .header {
+    padding: 14px 16px;
+  }
+  
+  /* Reduce content padding on mobile */
+  .content {
+    padding: 12px;
+  }
 }
 </style>
