@@ -45,7 +45,7 @@
       <header class="header">
         <div class="title">Admin</div>
         <div class="actions">
-          <div style="color: var(--muted)">Welcome, Admin</div>
+          <div style="color: var(--muted)">Welcome, {{ userFullname }}</div>
           <button class="btn" @click="logout">Logout</button>
         </div>
       </header>
@@ -67,6 +67,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import http from '../api/http'; // ✅ Import HTTP client
 
 const router = useRouter();
 const route = useRoute();
@@ -74,14 +75,33 @@ const route = useRoute();
 // Sidebar state
 const isSidebarExpanded = ref(false);
 const isHamburgerHovered = ref(false);
-const isMobile = ref(false); // NEW: detect mobile
+const isMobile = ref(false);
 
-// NEW: Detect mobile screens
+// ✅ Admin fullname state (fetched from API)
+const userFullname = ref('Admin'); // Fallback name
+
+// ✅ Fetch user profile from backend
+const fetchUserProfile = async () => {
+  try {
+    const token = localStorage.getItem('admin_token');
+    if (!token) return; // Don't redirect here - let Settings handle auth
+    
+    // ✅ Fetch from /users/profile endpoint
+    const response = await http.get('/users/profile');
+    userFullname.value = response.data.fullname || 'Admin';
+  } catch (e) {
+    console.error('Failed to fetch user profile:', e);
+    // Keep fallback name on error
+    userFullname.value = 'Admin';
+  }
+};
+
+// Detect mobile screens
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 768;
 };
 
-// NEW: Close sidebar on mobile when clicking outside
+// Close sidebar on mobile when clicking outside
 const closeSidebarOnMobile = () => {
   if (isMobile.value) {
     isSidebarExpanded.value = false;
@@ -96,7 +116,6 @@ const toggleSidebarManually = () => {
 // Navigation helpers
 const to = (path) => {
   router.push(path);
-  // NEW: Close sidebar on mobile after navigation
   if (isMobile.value) {
     isSidebarExpanded.value = false;
   }
@@ -110,8 +129,8 @@ const isActive = (p) => {
 // Actions
 const logout = () => {
   localStorage.removeItem('admin_token');
+  // ✅ No need to remove admin_user - we don't store it anymore
   router.push('/login');
-  // NEW: Close sidebar on mobile
   if (isMobile.value) {
     isSidebarExpanded.value = false;
   }
@@ -119,14 +138,14 @@ const logout = () => {
 
 const goSettings = () => {
   router.push('/settings');
-  // NEW: Close sidebar on mobile
   if (isMobile.value) {
     isSidebarExpanded.value = false;
   }
 };
 
-// NEW: Lifecycle hooks for mobile detection
+// ✅ Load user profile on mount
 onMounted(() => {
+  fetchUserProfile(); // ✅ Fetch fullname from API
   checkMobile();
   window.addEventListener('resize', checkMobile);
 });
@@ -301,7 +320,7 @@ onBeforeUnmount(() => {
   background-color: #f8f9fa;
 }
 
-/* MOBILE-ONLY STYLES (added below your original styles) */
+/* MOBILE-ONLY STYLES */
 @media (max-width: 768px) {
   /* Make hamburger larger and more touch-friendly */
   .hamburger-btn {
@@ -310,7 +329,6 @@ onBeforeUnmount(() => {
     width: 34px;
     height: 44px;
     font-size: 24px;
-    
   }
   
   /* Hide tooltip on mobile (no hover) */

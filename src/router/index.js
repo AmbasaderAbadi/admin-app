@@ -10,6 +10,7 @@ import Payments from '../pages/Payments.vue';
 import Customers from '../pages/Customers.vue';
 import Settings from '../pages/Settings.vue';
 import Services from '../pages/Services.vue';
+import General from '../pages/General.vue';
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
@@ -27,7 +28,8 @@ const routes = [
       { path: 'payments', name: 'Payments', component: Payments },
       { path: 'customers', name: 'Customers', component: Customers },
       {path:  'settings', name:'Settings' , component: Settings},
-      {path:  'services', name:'Services' , component: Services}
+      {path:  'services', name:'Services' , component: Services},
+      {path:  '/settings/general', name:'General' , component: General}
     ]
   },
 

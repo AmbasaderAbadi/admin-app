@@ -17,7 +17,7 @@ const forgotMessage = ref('')
 
 // Persistent data for 2FA step
 const loginEmail = ref('')
-const tempToken = ref('') // ✅ Store temp token from login
+const tempToken = ref('')
 
 // 2FA PIN
 const loginStep = ref('credentials')
@@ -46,7 +46,7 @@ const handleLogin = async () => {
       
       if (res?.twoFactorRequired && res.twoFactorMethod === 'pin') {
         loginEmail.value = email.value
-        tempToken.value = res.token // ✅ Save temp token
+        tempToken.value = res.token
         loginStep.value = '2fa-pin'
         pin.value = ''
         error.value = ''
@@ -70,13 +70,13 @@ const handleLogin = async () => {
     loading.value = true;
     
     try {
-      // ✅ Create a new HTTP instance with temp token
-      const verifyHttp = http.create();
-      verifyHttp.defaults.headers.common['Authorization'] = `Bearer ${tempToken.value}`;
-      
-      const verifyRes = await verifyHttp.post('/auth/2fa/pin/verify', {
+      const verifyRes = await http.post('/auth/2fa/pin/verify', {
         email: loginEmail.value,
         pin: pinNumber
+      }, {
+        headers: {
+          'Authorization': `Bearer ${tempToken.value}`
+        }
       });
       
       completeLogin(verifyRes.data);
@@ -90,9 +90,12 @@ const handleLogin = async () => {
 }
 
 const completeLogin = (res) => {
-  localStorage.setItem('admin_token', res.token)
-  localStorage.setItem('admin_user', JSON.stringify(res.user || {}))
-  router.push('/dashboard')
+  // ✅ ONLY store essential auth data (no user profile)
+  localStorage.setItem('admin_token', res.token);
+  
+  // ✅ NO user data in localStorage - will fetch from /users/profile
+  console.log('Login successful - token saved');
+  router.push('/dashboard');
 }
 
 const handleForgotPassword = () => {
