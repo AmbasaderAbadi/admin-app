@@ -1,4 +1,3 @@
-<!-- src/views/Providers.vue -->
 <template>
   <div class="providers-container">
     <!-- Header -->
@@ -181,7 +180,23 @@
             <h3>🔧 Service Details</h3>
             <div class="detail-row">
               <span class="label">Service Categories:</span>
-              <span class="value">{{ selectedProvider.serviceCategories?.join(', ') || '—' }}</span>
+              <span class="value">
+                <span v-if="selectedProvider.status === 'pending'">Pending - No services added yet</span>
+                <span v-else-if="selectedProvider.serviceCategories?.length">
+                  {{ selectedProvider.serviceCategories.join(', ') }}
+                </span>
+                <span v-else>—</span>
+              </span>
+            </div>
+            <div class="detail-row">
+              <span class="label">Sub-Categories:</span>
+              <span class="value">
+                <span v-if="selectedProvider.status === 'pending'">Pending - No services added yet</span>
+                <span v-else-if="selectedProvider.subCategories?.length">
+                  {{ selectedProvider.subCategories.join(', ') }}
+                </span>
+                <span v-else>—</span>
+              </span>
             </div>
             <div class="detail-row">
               <span class="label">FIN (ID):</span>
@@ -218,6 +233,52 @@
                 <span>📎 {{ getFileName(selectedProvider.certificate) }}</span>
                 <a :href="selectedProvider.certificate" target="_blank" class="download-link">Download</a>
               </div>
+            </div>
+          </div>
+
+          <!-- Services (for active providers only) -->
+          <div class="section" v-if="selectedProvider.status === 'active' && selectedProvider.services && selectedProvider.services.length > 0">
+            <h3>📋 Services Offered</h3>
+            <div class="services-list">
+              <div 
+                v-for="(service, index) in selectedProvider.services" 
+                :key="service._id"
+                class="service-item"
+              >
+                <div class="service-info">
+                  <div class="service-title">{{ service.name }}</div>
+                  <div class="service-category">Category: {{ service.categoryName }}</div>
+                  <div class="service-subcategory">Sub-Category: {{ service.subCategoryName }}</div>
+                  <div class="service-stats">
+                    <span>Price: {{ service.price || '—' }}</span>
+                    <span>Duration: {{ service.duration || '—' }} mins</span>
+                  </div>
+                </div>
+                <div class="service-actions">
+                  <button class="edit-btn" @click="editService(service)">
+                    ✏️ Edit
+                  </button>
+                  <button class="delete-btn" @click="deleteService(service)">
+                    🗑️ Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Message for active providers with no services -->
+          <div class="section" v-if="selectedProvider.status === 'active' && (!selectedProvider.services || selectedProvider.services.length === 0)">
+            <h3>📋 Services Offered</h3>
+            <div class="no-services-message">
+              This provider has not added any services yet.
+            </div>
+          </div>
+
+          <!-- Message for pending providers -->
+          <div class="section" v-if="selectedProvider.status === 'pending'">
+            <h3>📋 Services</h3>
+            <div class="pending-message">
+              Provider is pending approval. Services will be visible after activation.
             </div>
           </div>
 
@@ -259,10 +320,9 @@
           </div>
 
           <div class="form-group">
-            <label>Service Categories *</label>
+            <label>Service Categories</label>
             <input v-model="newProvider.serviceCategories" type="text" 
-                   placeholder="e.g., barber, massage, cleaning" 
-                   required />
+                   placeholder="Optional during registration" />
           </div>
 
           <div class="form-group">
@@ -344,10 +404,7 @@ const passwordMismatch = ref(false);
 const route = useRoute();
 const router = useRouter();
 
-const handleClickOutside = () => {
-  openMenuIndex.value = null;
-};
-
+// Fetch Data
 onMounted(() => {
   const urlStatus = route.query.status;
   if (urlStatus && ['all', 'active', 'pending', 'inactive', 'suspended'].includes(urlStatus)) {
@@ -365,6 +422,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
 });
+
+const handleClickOutside = () => {
+  openMenuIndex.value = null;
+};
 
 const fetchProviders = async () => {
   loading.value = true;
@@ -387,15 +448,15 @@ const fetchProviders = async () => {
         email: profile.email?.trim() || 'no-email@example.com',
         phonenumber: profile.phonenumber?.trim() || '—',
         location: profile.location || '—',
-        serviceCategories: Array.isArray(profile.serviceCategories) 
-          ? profile.serviceCategories 
-          : (profile.serviceCategories ? [profile.serviceCategories] : []),
+        serviceCategories: profile.serviceCategories || [],
+        subCategories: profile.subCategories || [],
         FIN: profile.FIN || '—',
         workExperience: profile.workExperience || '—',
         certificate: profile.certificate || null,
         status: profile.status || 'pending',
         createdAt: profile.createdAt || user.createdAt || null,
-        avatar: profile.avatar || null
+        avatar: profile.avatar || null,
+        services: [] // Initialize empty services array
       };
     });
 
@@ -518,8 +579,19 @@ const deleteProvider = async (provider) => {
   }
 };
 
-const viewDetails = (provider) => {
+const viewDetails = async (provider) => {
   selectedProvider.value = provider;
+  
+  // Only fetch services if provider is active
+  if (provider.status === 'active') {
+    try {
+      const response = await http.get(`/services/provider/${provider._id}`);
+      selectedProvider.value.services = Array.isArray(response.data) ? response.data : [];
+    } catch (err) {
+      console.error('Failed to fetch services:', err);
+      selectedProvider.value.services = [];
+    }
+  }
 };
 
 const closeDetailModal = () => {
@@ -570,7 +642,9 @@ const submitNewProvider = async () => {
     formData.append('email', newProvider.value.email.trim());
     formData.append('phonenumber', newProvider.value.phonenumber.trim());
     formData.append('location', newProvider.value.location.trim());
-    formData.append('serviceCategories', newProvider.value.serviceCategories.trim());
+    if (newProvider.value.serviceCategories) {
+      formData.append('serviceCategories', newProvider.value.serviceCategories.trim());
+    }
     formData.append('FIN', newProvider.value.FIN.trim());
     formData.append('password', newProvider.value.password);
     formData.append('workExperience', newProvider.value.workExperience.trim());
@@ -633,10 +707,29 @@ watch(sortBy, (newSort) => {
   });
   sortProviders();
 });
+
+// Service Management Methods (Placeholder - Remove if not needed)
+const editService = (service) => {
+  alert('Edit service functionality coming soon');
+};
+
+const deleteService = async (service) => {
+  if (!confirm(`Delete service "${service.name}"?`)) return;
+
+  try {
+    await http.delete(`/services/${service._id}`);
+    // Update local state
+    selectedProvider.value.services = selectedProvider.value.services.filter(s => s._id !== service._id);
+    alert('Service deleted successfully!');
+  } catch (err) {
+    console.error('Error deleting service:', err);
+    alert('Failed to delete service. Please try again.');
+  }
+};
 </script>
 
 <style scoped>
-/* ... your existing provider styles + new sort controls ... */
+/* ... your existing provider styles ... */
 .providers-container {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   padding: 16px;
@@ -1239,6 +1332,91 @@ watch(sortBy, (newSort) => {
   cursor: not-allowed;
 }
 
+/* Services Section Styles */
+.services-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.service-item {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.service-info {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.service-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.service-category,
+.service-subcategory {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.service-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #888;
+}
+
+.service-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-btn,
+.delete-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.edit-btn {
+  background-color: #4285f4;
+  color: white;
+}
+
+.edit-btn:hover {
+  background-color: #3367d6;
+}
+
+.delete-btn {
+  background-color: #ff5252;
+  color: white;
+}
+
+.delete-btn:hover {
+  background-color: #ff3333;
+}
+
+.no-services-message,
+.pending-message {
+  font-size: 14px;
+  color: #666;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  text-align: center;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .header h1 {
@@ -1289,11 +1467,18 @@ watch(sortBy, (newSort) => {
   }
 
   .provider-info {
-    margin-right: 10px;
+    width: 100%;
+    margin-right: 0;
   }
 
   .provider-status-container {
-    margin-right: 24px;
+    margin: 0 0 12px 0;
+    align-self: flex-start;
+  }
+
+  .provider-actions {
+    position: static;
+    align-self: flex-end;
   }
 
   .modal-content {
@@ -1302,130 +1487,16 @@ watch(sortBy, (newSort) => {
     margin: 10px;
   }
 
-  .detail-row {
-    flex-direction: column;
-    align-items: flex-start;
+  .services-list {
+    gap: 8px;
   }
 
-  .label {
-    margin-bottom: 4px;
-    min-width: auto;
+  .service-item {
+    padding: 8px;
   }
-}
-/* Add to bottom of <style> in both files */
-@media (max-width: 768px) {
-  .customers-container,
-  .providers-container {
-    padding: 12px;
-  }
-  
-  .header h1 {
-    font-size: 20px;
-  }
-  
-  .search-bar input {
-    padding: 10px 16px;
-    font-size: 15px;
-  }
-  
-  .filter-buttons {
-    gap: 6px;
-  }
-  
-  .filter-button {
-    padding: 6px 12px;
-    font-size: 13px;
-  }
-  
-  .sort-controls {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  
-  .sort-controls select {
-    padding: 6px 10px;
+
+  .service-title {
     font-size: 14px;
-  }
-  
-  /* Card layout adjustments */
-  .customer-card,
-  .provider-card {
-    padding: 12px;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .customer-avatar,
-  .provider-avatar {
-    margin-right: 0;
-    margin-bottom: 12px;
-  }
-  
-  .customer-info,
-  .provider-info {
-    width: 100%;
-    margin-bottom: 12px;
-  }
-  
-  .customer-status,
-  .provider-status-container {
-    margin: 0 0 12px 0;
-    align-self: flex-start;
-  }
-  
-  .customer-actions,
-  .provider-actions {
-    position: static;
-    align-self: flex-end;
-  }
-  
-  .customer-date,
-  .provider-date {
-    font-size: 11px;
-    margin-top: 4px;
-  }
-  
-  /* Modal full-screen on mobile */
-  .modal-content {
-    width: 95%;
-    margin: 10px;
-    max-height: 90vh;
-  }
-  
-  .add-customer-button,
-  .add-provider-button {
-    bottom: 20px;
-    right: 20px;
-  }
-  
-  .add-customer-button button,
-  .add-provider-button button {
-    width: 50px;
-    height: 50px;
-    font-size: 24px;
-  }
-}
-
-@media (max-width: 480px) {
-  .header h1 {
-    font-size: 18px;
-  }
-  
-  .metric-value {
-    font-size: 22px;
-  }
-  
-  .customer-name,
-  .provider-name {
-    font-size: 15px;
-  }
-  
-  .bottom-navigation {
-    padding: 6px 0;
-  }
-  
-  .nav-icon {
-    font-size: 20px;
   }
 }
 </style>

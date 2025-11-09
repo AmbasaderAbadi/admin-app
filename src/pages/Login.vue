@@ -1,10 +1,11 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router' 
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router' 
 import { loginAdmin } from '../api/auth' 
-import http from '../api/http';
+import http from '../api/http'
 
 const router = useRouter()
+const route = useRoute()
 
 // Credentials
 const email = ref('')
@@ -14,6 +15,15 @@ const loading = ref(false)
 const showForgotPassword = ref(false)
 const forgotEmail = ref('')
 const forgotMessage = ref('')
+const forgotError = ref('')
+
+// Reset password step
+const showResetPassword = ref(false)
+const resetToken = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+const resetMessage = ref('')
+const resetError = ref('')
 
 // Persistent data for 2FA step
 const loginEmail = ref('')
@@ -22,7 +32,7 @@ const tempToken = ref('')
 // 2FA PIN
 const loginStep = ref('credentials')
 const pin = ref('')
-const isPasswordVisible = ref(false) 
+const isPasswordVisible = ref(false)
 
 const togglePasswordVisibility = () => {
   isPasswordVisible.value = !isPasswordVisible.value
@@ -41,6 +51,7 @@ const handleLogin = async () => {
     if (!validateForm()) return
     loading.value = true
     forgotMessage.value = ''
+    forgotError.value = ''
     try {
       const res = await loginAdmin(email.value, password.value)
       
@@ -74,9 +85,7 @@ const handleLogin = async () => {
         email: loginEmail.value,
         pin: pinNumber
       }, {
-        headers: {
-          'Authorization': `Bearer ${tempToken.value}`
-        }
+        headers: { 'Authorization': `Bearer ${tempToken.value}` }
       });
       
       completeLogin(verifyRes.data);
@@ -90,42 +99,118 @@ const handleLogin = async () => {
 }
 
 const completeLogin = (res) => {
-  // ✅ ONLY store essential auth data (no user profile)
   localStorage.setItem('admin_token', res.token);
-  
-  // ✅ NO user data in localStorage - will fetch from /users/profile
   console.log('Login successful - token saved');
   router.push('/dashboard');
 }
 
-const handleForgotPassword = () => {
+const handleForgotPassword = async () => {
   forgotMessage.value = ''
+  forgotError.value = ''
   error.value = ''
+  
   if (!forgotEmail.value.trim()) { 
-    forgotMessage.value = 'Enter your email address'
+    forgotError.value = 'Email is required'
     return 
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail.value)) {
-    forgotMessage.value = 'Please enter a valid email address.'
+    forgotError.value = 'Please enter a valid email address.'
     return
   }
   
-  forgotMessage.value = `If an account exists for ${forgotEmail.value}, a reset link was sent.`
-  forgotEmail.value = ''
-  setTimeout(() => {
-    forgotMessage.value = ''
-    if (!error.value) showForgotPassword.value = false
-  }, 5000)
+  loading.value = true
+  try {
+    // ✅ Correct endpoint for sending reset link
+    await http.post('/auth/forgot-password/', {
+      email: forgotEmail.value.trim()
+    })
+    
+    forgotMessage.value = `Password reset link sent to ${forgotEmail.value}. Check your email.`
+    forgotEmail.value = ''
+    
+    setTimeout(() => {
+      forgotMessage.value = ''
+      if (!forgotError.value) {
+        showForgotPassword.value = false
+      }
+    }, 5000)
+  } catch (err) {
+    console.error('Forgot Password Error:', err)
+    forgotError.value = err?.response?.data?.message || 'Failed to send reset link. Please try again.'
+  } finally {
+    loading.value = false
+  }
 }
+
+// ✅ Handle Reset Password - This uses the correct endpoint
+const handleResetPassword = async () => {
+  resetMessage.value = ''
+  resetError.value = ''
+
+  if (!newPassword.value || !confirmPassword.value) {
+    resetError.value = 'All fields are required.'
+    return
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    resetError.value = 'Passwords do not match.'
+    return
+  }
+  if (newPassword.value.length < 6) {
+    resetError.value = 'Password must be at least 6 characters long.'
+    return
+  }
+
+  loading.value = true
+  try {
+    // ✅ This is the CORRECT endpoint: /auth/reset-password/{token}
+    const token = resetToken.value
+    await http.post(`/auth/reset-password/${token}`, { 
+      password: newPassword.value 
+    })
+    
+    resetMessage.value = 'Password reset successfully! You can now log in.'
+    newPassword.value = ''
+    confirmPassword.value = ''
+    
+    // Redirect to login after 3 seconds
+    setTimeout(() => {
+      showResetPassword.value = false
+      router.push('/login')
+    }, 3000)
+  } catch (err) {
+    console.error('Reset Password Error:', err)
+    resetError.value = err?.response?.data?.message || 'Failed to reset password. The token may have expired.'
+  } finally {
+    loading.value = false
+  }
+}
+
+// ✅ Detect reset token from URL path (not query params)
+onMounted(() => {
+  // Check if we're on /auth/reset-password/:token route
+  if (route.path.startsWith('/auth/reset-password/')) {
+    const token = route.params.token
+    if (token) {
+      resetToken.value = token
+      showResetPassword.value = true
+      showForgotPassword.value = false
+      loginStep.value = 'credentials'
+    }
+  }
+})
 
 const backToLogin = () => {
   loginStep.value = 'credentials'
   error.value = ''
+  forgotError.value = ''
+  showForgotPassword.value = false
+  showResetPassword.value = false
+  resetError.value = ''
+  resetMessage.value = ''
 }
 </script>
 
 <template>
-  <!-- Split Screen Container -->
   <div class="split-screen-container">
     <!-- Left Panel -->
     <div class="description-panel">
@@ -138,86 +223,64 @@ const backToLogin = () => {
       </div>
     </div>
 
-    <!-- Login Form -->
+    <!-- Login / Forgot / Reset -->
     <div class="form-container">
       <div class="login-card">
         <img src="../assets/Infinity Booking Logo Enhanced.png" alt="App Logo" class="logo" width="50px" height="50px" />
         
-        <!-- Header -->
         <h1 class="card-title">
           {{
-            showForgotPassword 
-              ? 'Reset Password' 
-              : loginStep === '2fa-pin' 
-                ? 'Two-Factor Authentication' 
-                : 'Sign In to Admin Portal'
+            showResetPassword
+              ? 'Reset Your Password'
+              : showForgotPassword 
+                ? 'Reset Password' 
+                : loginStep === '2fa-pin' 
+                  ? 'Two-Factor Authentication' 
+                  : 'Sign In to Admin Portal'
           }}
         </h1>
+
         <p class="card-subtitle">
           {{
-            showForgotPassword 
-              ? 'Enter your email below to get a reset link.' 
-              : loginStep === '2fa-pin'
-                ? 'Enter your 6-digit security PIN'
-                : 'Welcome back! Please enter your details.'
+            showResetPassword
+              ? 'Enter your new password below.'
+              : showForgotPassword 
+                ? 'Enter your email below to get a reset link.' 
+                : loginStep === '2fa-pin'
+                  ? 'Enter your 6-digit security PIN'
+                  : 'Welcome back! Please enter your details.'
           }}
         </p>
 
-        <!-- Messages -->
         <p v-if="error" class="error-msg">{{ error }}</p>
+        <p v-if="forgotError" class="error-msg">{{ forgotError }}</p>
         <p v-if="forgotMessage" class="success-msg">{{ forgotMessage }}</p>
+        <p v-if="resetError" class="error-msg">{{ resetError }}</p>
+        <p v-if="resetMessage" class="success-msg">{{ resetMessage }}</p>
 
         <!-- Login Form -->
         <form 
-          v-if="!showForgotPassword" 
+          v-if="!showForgotPassword && !showResetPassword" 
           @submit.prevent="handleLogin" 
           class="auth-form"
         >
-          <!-- Credentials Step -->
           <template v-if="loginStep === 'credentials'">
+            <!-- Email -->
             <label for="email-input">Email Address</label>
             <div class="input-field">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-              <input 
-                id="email-input" 
-                v-model="email" 
-                type="email" 
-                placeholder="you@example.com" 
-                required 
-                :disabled="loading"
-              >
+              <input id="email-input" v-model="email" type="email" placeholder="you@example.com" required :disabled="loading">
             </div>
 
+            <!-- Password -->
             <label for="password-input">Password</label>
             <div class="input-field password-field">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-              <input 
-                id="password-input" 
-                v-model="password" 
-                :type="isPasswordVisible ? 'text' : 'password'" 
-                placeholder="Enter your password" 
-                required 
-                :disabled="loading"
-              >
-              <svg 
-                class="eye-icon" 
-                xmlns="http://www.w3.org/2000/svg" 
-                width="20" 
-                height="20" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="#9EABB4" 
-                stroke-width="2" 
-                stroke-linecap="round" 
-                stroke-linejoin="round"
-                @click="togglePasswordVisibility"
-              >
+              <input id="password-input" v-model="password" :type="isPasswordVisible ? 'text' : 'password'" placeholder="Enter your password" required :disabled="loading">
+              <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" @click="togglePasswordVisibility" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <template v-if="isPasswordVisible">
                   <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-                  <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 11 8 11 8a18.5 18.5 0 0 1-2.93 2.55"></path>
                   <path d="M2 2l20 20"></path>
-                  <path d="M6.71 6.71l6.01 6.01"></path>
-                  <path d="M12 17.5s-4 4-11 4"></path>
                 </template>
                 <template v-else>
                   <path d="M2 12s4-8 10-8 10 8 10 8-4 8-10 8-10-8-10-8z"></path>
@@ -225,57 +288,53 @@ const backToLogin = () => {
                 </template>
               </svg>
             </div>
-            
             <p class="forgot-link" @click="showForgotPassword = true">Forgot Password?</p>
           </template>
 
-          <!-- 2FA PIN Step -->
+          <!-- 2FA -->
           <template v-else-if="loginStep === '2fa-pin'">
             <label for="pin-input">6-Digit PIN</label>
             <div class="input-field">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 22v-4M4 12H2m20 0h-2M7 7l-3-3m18 18l-3-3M7 17l-3 3m18-18l-3 3"/></svg>
-              <input 
-                id="pin-input"
-                v-model="pin" 
-                type="text"
-                inputmode="numeric"
-                maxlength="6"
-                placeholder="••••••"
-                @input="pin = pin.replace(/\D/g, '').slice(0, 6)"
-                :disabled="loading"
-                autocomplete="off"
-              >
+              <input id="pin-input" v-model="pin" type="text" inputmode="numeric" maxlength="6" placeholder="••••••" @input="pin = pin.replace(/\D/g, '').slice(0, 6)" :disabled="loading" autocomplete="off">
             </div>
             <p class="forgot-link back-link" @click="backToLogin">← Back to Login</p>
           </template>
-          
-          <button 
-            type="submit" 
-            :disabled="loading || (loginStep === '2fa-pin' && pin.length !== 6)" 
-            class="sign-in-btn"
-          >
-            {{ 
-              loading 
-                ? 'Processing...' 
-                : loginStep === '2fa-pin' 
-                  ? 'Verify PIN' 
-                  : 'Sign In' 
-            }}
+
+          <button type="submit" :disabled="loading || (loginStep === '2fa-pin' && pin.length !== 6)" class="sign-in-btn">
+            {{ loading ? 'Processing...' : loginStep === '2fa-pin' ? 'Verify PIN' : 'Sign In' }}
           </button>
         </form>
 
-        <!-- Forgot Password Form -->
-        <form v-else @submit.prevent="handleForgotPassword" class="auth-form">
+        <!-- Forgot Password -->
+        <form v-else-if="showForgotPassword" @submit.prevent="handleForgotPassword" class="auth-form">
           <label for="forgot-email-input">Email Address</label>
           <div class="input-field">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
             <input id="forgot-email-input" v-model="forgotEmail" type="email" placeholder="you@example.com" required>
           </div>
-          
-          <button type="submit" class="sign-in-btn">
-            Send Reset Link
+          <button type="submit" :disabled="loading" class="sign-in-btn">
+            {{ loading ? 'Sending...' : 'Send Reset Link' }}
           </button>
-          <p class="forgot-link back-link" @click="showForgotPassword = false">← Back to Sign In</p>
+          <p class="forgot-link back-link" @click="backToLogin">← Back to Sign In</p>
+        </form>
+
+        <!-- ✅ Reset Password Form -->
+        <form v-else-if="showResetPassword" @submit.prevent="handleResetPassword" class="auth-form">
+          <label>New Password</label>
+          <div class="input-field password-field">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <input v-model="newPassword" type="password" placeholder="Enter new password" required>
+          </div>
+          <label>Confirm Password</label>
+          <div class="input-field password-field">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9EABB4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <input v-model="confirmPassword" type="password" placeholder="Confirm new password" required>
+          </div>
+          <button type="submit" :disabled="loading" class="sign-in-btn">
+            {{ loading ? 'Resetting...' : 'Reset Password' }}
+          </button>
+          <p class="forgot-link back-link" @click="backToLogin">← Back to Sign In</p>
         </form>
       </div>
     </div>
@@ -283,7 +342,13 @@ const backToLogin = () => {
 </template>
 
 <style>
-/* ... your existing styles ... */
+
+/* Add this for reset password fields */
+#new-password,
+#confirm-password {
+  padding-right: 40px;
+}
+
 
 /* Add PIN input styles */
 #pin-input {

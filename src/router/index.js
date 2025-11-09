@@ -14,6 +14,9 @@ import General from '../pages/General.vue';
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
+  
+  // ✅ Add reset password route - uses the same Login.vue component
+  { path: '/auth/reset-password/:token', name: 'ResetPassword', component: Login },
 
   // Admin layout wraps protected child routes
   {
@@ -45,6 +48,12 @@ const router = createRouter({
 // simple auth guard: redirect to /login if no token
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('admin_token');
+  
+  // ✅ Allow reset password route without authentication
+  if (to.name === 'ResetPassword') {
+    return next();
+  }
+  
   if (to.name !== 'Login' && !token) return next({ name: 'Login' });
   if (to.name === 'Login' && token) return next({ name: 'Dashboard' });
   next();

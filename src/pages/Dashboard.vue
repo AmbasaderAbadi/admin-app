@@ -362,7 +362,7 @@ export default {
           statusFilter: 'all'
         },
         { 
-          title: 'New Active Customers', 
+          title: ' Active Customers', 
           value: this.formatNumber(newActiveCustomers), 
           change: 0, 
           icon: '✅',
@@ -370,7 +370,7 @@ export default {
           statusFilter: 'active'
         },
         { 
-          title: 'New Active Providers', 
+          title: 'Active Providers', 
           value: this.formatNumber(newActiveProviders), 
           change: 0, 
           icon: '✅',
@@ -378,7 +378,7 @@ export default {
           statusFilter: 'active'
         },
         { 
-          title: 'New Suspended Customers', 
+          title: 'Suspended Customers', 
           value: this.formatNumber(newSuspendedCustomers), 
           change: 0, 
           icon: '⛔',
@@ -386,7 +386,7 @@ export default {
           statusFilter: 'suspended'
         },
         { 
-          title: 'New Suspended Providers', 
+          title: 'Suspended Providers', 
           value: this.formatNumber(newSuspendedProviders), 
           change: 0, 
           icon: '⛔',
@@ -394,7 +394,7 @@ export default {
           statusFilter: 'suspended'
         },
         { 
-          title: 'New Pending Providers', 
+          title: 'Pending Providers', 
           value: this.formatNumber(newPendingProviders), 
           change: 0, 
           icon: '⏳',
