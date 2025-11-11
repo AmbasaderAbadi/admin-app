@@ -1,12 +1,14 @@
+// src/main.js
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
-import router from './router'
-import './styles.css'
-console.log("🚀 Vue app starting...");
+import router from './core/router'
+import './core/assets/styles/variables.css'
+import './core/assets/styles/mixins.css'
 
 const app = createApp(App)
-app.use(createPinia())
+const pinia = createPinia()
+
+app.use(pinia)
 app.use(router)
 app.mount('#app')
-console.log("✅ Vue app mounted.");

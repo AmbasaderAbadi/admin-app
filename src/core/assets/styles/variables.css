@@ -1,0 +1,14 @@
+/* src/core/assets/styles/variables.css */
+:root {
+  --primary-color: #4285f4;
+  --secondary-color: #5a6cff;
+  --success-color: #00c853;
+  --warning-color: #ff9800;
+  --danger-color: #ff5252;
+  --text-primary: #333;
+  --text-secondary: #666;
+  --bg-light: #f5f7fa;
+  --border-color: #e0e5ff;
+  --border-radius: 12px;
+  --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
