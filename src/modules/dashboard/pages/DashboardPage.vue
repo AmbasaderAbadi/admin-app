@@ -759,11 +759,9 @@ const navigateTo = (title) => {
 }
 
 .bottom-navigation {
-  position: fixed;
   bottom: 0;
   left: 19.8%;
   right: 0;
-  background-color: white;
   align-items: center;
   display: flex;
   justify-content: center;

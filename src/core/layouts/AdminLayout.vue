@@ -4,7 +4,10 @@
     <button
       ref="hamburgerBtn"
       class="hamburger-btn"
-      :class="{ 'hovered': isHamburgerHovered }"
+      :class="{ 
+        'hovered': isHamburgerHovered,
+        'sidebar-expanded': isSidebarExpanded && !isMobile
+      }"
       @mouseenter="isHamburgerHovered = true"
       @mouseleave="isHamburgerHovered = false"
       @click="toggleSidebarManually"
@@ -40,10 +43,27 @@
       </div>
     </aside>
 
+    <!-- Mobile Overlay - Only shown on mobile when sidebar is expanded -->
+    <div 
+      v-if="isMobile && isSidebarExpanded" 
+      class="mobile-overlay"
+      @click="closeSidebar"
+    ></div>
+
     <!-- Main Content -->
     <div class="main-area" :class="{ 'sidebar-hidden': !isSidebarExpanded }">
       <header class="header">
-        <div class="title">Admin</div>
+        <div class="title-section">
+          <!-- Back Button - Show when not on dashboard -->
+          <button 
+            v-if="!isDashboard" 
+            class="back-btn"
+            @click="goBack"
+          >
+            ← Back
+          </button>
+          <div class="title">Admin</div>
+        </div>
         <div class="actions">
           <div style="color: var(--muted)">Welcome, Admin</div>
           <button class="btn" @click="logout">Logout</button>
@@ -58,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
@@ -67,17 +87,78 @@ const route = useRoute()
 // Sidebar state
 const isSidebarExpanded = ref(false)
 const isHamburgerHovered = ref(false)
+const isMobile = ref(false)
+
+// Navigation history stack
+const navigationHistory = ref([])
+
+// Computed property to check if we're on dashboard
+const isDashboard = computed(() => route.path === '/')
+
+// Check if mobile
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
 
 // Toggle manually (click only)
 const toggleSidebarManually = () => {
   isSidebarExpanded.value = !isSidebarExpanded.value
 }
 
+// Close sidebar (for mobile)
+const closeSidebar = () => {
+  if (isMobile.value) {
+    isSidebarExpanded.value = false
+  }
+}
+
 // Navigation helpers
-const to = (path) => router.push(path)
+const to = (path) => {
+  // Add current path to history before navigating
+  if (route.path !== path) {
+    navigationHistory.value.push(route.path)
+  }
+  
+  router.push(path)
+  // Close sidebar on mobile after navigation
+  if (isMobile.value) {
+    isSidebarExpanded.value = false
+  }
+}
+
+// Back navigation
+const goBack = () => {
+  if (navigationHistory.value.length > 0) {
+    const previousPath = navigationHistory.value.pop()
+    router.push(previousPath)
+  } else {
+    // Fallback: go to dashboard if no history
+    router.push('/')
+  }
+  
+  // Close sidebar on mobile after navigation
+  if (isMobile.value) {
+    isSidebarExpanded.value = false
+  }
+}
+
 const isActive = (p) => {
   if (p === '/') return route.path === '/'
   return route.path.startsWith(p)
+}
+
+// Handle clicks outside sidebar (mobile only)
+const handleClickOutside = (event) => {
+  if (!isMobile.value || !isSidebarExpanded.value) return
+  
+  const sidebar = document.querySelector('.sidebar')
+  const hamburgerBtn = document.querySelector('.hamburger-btn')
+  
+  // Close sidebar if clicking outside of sidebar and hamburger button
+  if (sidebar && !sidebar.contains(event.target) && 
+      hamburgerBtn && !hamburgerBtn.contains(event.target)) {
+    isSidebarExpanded.value = false
+  }
 }
 
 // Actions
@@ -88,7 +169,28 @@ const logout = () => {
 
 const goSettings = () => {
   router.push('/settings')
+  // Close sidebar on mobile after navigation
+  if (isMobile.value) {
+    isSidebarExpanded.value = false
+  }
 }
+
+// Lifecycle
+onMounted(() => {
+  checkMobile()
+  document.addEventListener('click', handleClickOutside)
+  window.addEventListener('resize', checkMobile)
+  
+  // Initialize navigation history with current path if not dashboard
+  if (route.path !== '/') {
+    navigationHistory.value.push('/')
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('resize', checkMobile)
+})
 </script>
 
 <style scoped>
@@ -103,11 +205,10 @@ const goSettings = () => {
 /* Hamburger button */
 .hamburger-btn {
   position: fixed;
-  top: 50px;
+  top: 46px;
   left: 15px;
   z-index: 1000;
   background: white;
-  border: 1px solid #ddd;
   border-radius: 6px;
   width: 40px;
   height: 30px;
@@ -118,13 +219,20 @@ const goSettings = () => {
   justify-content: center;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   color: #333;
-  transition: border-radius 0.2s ease, transform 0.2s ease;
+  transition: all 0.3s ease;
+  /* Smooth transition for position changes */
+  transition-property: left, transform, border-radius, background;
 }
 
 .hamburger-btn.hovered {
-  border-radius: 12px; /* Rounded corners on hover */
+  border-radius: 12px;
   background: #f0f0f0;
   transform: scale(1.05);
+}
+
+/* When sidebar is expanded on desktop, move hamburger button */
+.hamburger-btn.sidebar-expanded {
+  left: 200px; /* Sidebar width (240px) + 15px margin */
 }
 
 /* Tooltip */
@@ -243,6 +351,28 @@ const goSettings = () => {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
 }
 
+.title-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.back-btn {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
 .title {
   font-size: 20px;
   font-weight: bold;
@@ -255,15 +385,31 @@ const goSettings = () => {
   background-color: #f8f9fa;
 }
 
+/* Mobile Overlay - Only for mobile */
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 998;
+}
+
 /* MOBILE-ONLY STYLES */
 @media (max-width: 768px) {
   /* Make hamburger larger and more touch-friendly */
   .hamburger-btn {
-    top: 50px;
+    top: 47px;
     left: 15px;
-    width: 34px;
-    height: 44px;
+    width: 30px;
+    height: 30px;
     font-size: 24px;
+  }
+  
+  /* On mobile, hamburger button stays fixed in left corner */
+  .hamburger-btn.sidebar-expanded {
+    left: 0 !important; /* Override desktop behavior on mobile */
   }
   
   /* Hide tooltip on mobile (no hover) */
@@ -280,6 +426,7 @@ const goSettings = () => {
     width: 260px;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
+    z-index: 999;
   }
   
   .sidebar.sidebar-expanded {
@@ -296,17 +443,7 @@ const goSettings = () => {
   /* Main area takes full width on mobile */
   .main-area {
     margin-left: 0;
-  }
-  
-  /* Add mobile overlay */
-  .mobile-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 998;
+    width: 100%;
   }
   
   /* Adjust header padding for mobile */
@@ -317,6 +454,46 @@ const goSettings = () => {
   /* Reduce content padding on mobile */
   .content {
     padding: 12px;
+  }
+  
+  /* Mobile back button */
+  .back-btn {
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+}
+
+/* DESKTOP STYLES */
+@media (min-width: 769px) {
+  .admin-root {
+    flex-direction: row;
+  }
+  
+  .hamburger-btn {
+    top: 50px;
+    left: 15px;
+  }
+  
+  .sidebar {
+    position: static;
+    height: 100vh;
+  }
+  
+  .sidebar:not(.sidebar-expanded) {
+    width: 0 !important;
+  }
+  
+  .sidebar.sidebar-expanded {
+    width: 240px;
+  }
+  
+  .main-area:not(.sidebar-hidden) {
+    margin-left: 0;
+    width: calc(100% - 240px);
+  }
+  
+  .mobile-overlay {
+    display: none;
   }
 }
 </style>
