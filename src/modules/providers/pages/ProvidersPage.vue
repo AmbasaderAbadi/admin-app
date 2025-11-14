@@ -249,15 +249,23 @@
                 class="service-item"
               >
                 <div class="service-info">
-                  <div class="service-title">{{ service.name }}</div>
-                  <div class="service-category">Category: {{ service.categoryName }}</div>
-                  <div class="service-subcategory">Sub-Category: {{ service.subCategoryName }}</div>
+                  <div class="service-title">{{ service.title || 'Untitled Service' }}</div>
+                  <div class="service-category">Category: {{ service.category || '—' }}</div>
+                  <div class="service-description">{{ service.description || 'No description available' }}</div>
                   <div class="service-stats">
-                    <span>Price: ${{ service.price || '—' }}</span>
-                    <span>Duration: {{ service.duration || '—' }} mins</span>
+                    <span>Total Price: {{ service.totalPrice }} {{ service.priceUnit || 'ETB' }}</span>
+                    <span>Booking Price: {{ service.bookingPrice }} {{ service.priceUnit || 'ETB' }}</span>
+                    <span>Type: {{ service.serviceType || '—' }}</span>
+                  </div>
+                  <div class="service-meta">
+                    <span class="service-status" :class="service.status">{{ service.status }}</span>
+                    <span v-if="service.isFeatured" class="featured-badge">Featured</span>
                   </div>
                 </div>
                 <div class="service-actions">
+                  <button class="book-btn" @click="bookService(service)">
+                    📅 Book
+                  </button>
                   <button class="edit-btn" @click="editService(service)">
                     ✏️ Edit
                   </button>
@@ -420,7 +428,6 @@ const fetchProviders = async () => {
   loading.value = true;
   error.value = '';
   try {
-    // ✅ Use CORRECT endpoint: /users/providers (not /infinity-booking/providers)
     let url = '/infinity-booking/users/providers';
     if (selectedStatus.value !== 'all') {
       url += `?status=${selectedStatus.value}`;
@@ -509,8 +516,7 @@ const viewDetails = async (provider) => {
   // Only fetch services if provider is active
   if (provider.status === 'active') {
     try {
-      // ✅ Use CORRECT endpoint for fetching services
-      const response = await http.get(`/services/provider/${provider._id}`);
+      const response = await http.get(`/infinity-booking/services/provider/${provider._id}`);
       selectedProvider.value.services = Array.isArray(response.data) ? response.data : [];
     } catch (err) {
       console.error('Failed to fetch services:', err);
@@ -521,7 +527,6 @@ const viewDetails = async (provider) => {
 
 const updateStatus = async (provider, newStatus) => {
   try {
-    // ✅ Use CORRECT endpoint: /users/providers/status
     await http.patch('/infinity-booking/users/providers/status', {
       email: provider.email,
       status: newStatus
@@ -543,7 +548,6 @@ const deleteProvider = async (provider) => {
   if (!confirm(`Delete ${provider.fullname}?`)) return;
 
   try {
-    // ✅ Use CORRECT endpoint: /users/{id}
     await http.delete(`/infinity-booking/users/${encodeURIComponent(provider._id)}`);
     providers.value = providers.value.filter(p => p._id !== provider._id);
     openMenuIndex.value = null;
@@ -577,20 +581,6 @@ const addNewProvider = () => {
 
 const closeModal = () => {
   showAddModal.value = false;
-  newProvider.value = {
-    fullname: '',
-    email: '',
-    phonenumber: '',
-    location: '',
-    serviceCategories: '',
-    FIN: '',
-    password: '',
-    confirmPassword: '',
-    workExperience: '',
-    certificate: null,
-    certificateName: ''
-  };
-  passwordMismatch.value = false;
 };
 
 const handleFileChange = (event) => {
@@ -620,6 +610,7 @@ const submitNewProvider = async () => {
     }
     formData.append('FIN', newProvider.value.FIN.trim());
     formData.append('password', newProvider.value.password);
+    formData.append('confirmPassword', newProvider.value.confirmPassword);
     formData.append('workExperience', newProvider.value.workExperience.trim());
     formData.append('role', 'provider');
 
@@ -627,7 +618,6 @@ const submitNewProvider = async () => {
       formData.append('certificate', newProvider.value.certificate);
     }
 
-    // ✅ Use CORRECT endpoint: /users/providers
     await http.post('/infinity-booking/users/providers', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
@@ -693,11 +683,33 @@ const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString();
 };
 
+const bookService = (service) => {
+  alert(`Booking service: ${service.title}\nPrice: ${service.totalPrice} ${service.priceUnit || 'ETB'}`);
+};
+
+const editService = (service) => {
+  alert(`Edit service: ${service.title}`);
+};
+
+const deleteService = async (service) => {
+  if (!confirm(`Delete service "${service.title}"?`)) return;
+  
+  try {
+    await http.delete(`/infinity-booking/services/${service._id}`);
+    if (selectedProvider.value) {
+      selectedProvider.value.services = selectedProvider.value.services.filter(s => s._id !== service._id);
+    }
+    alert('Service deleted successfully!');
+  } catch (err) {
+    console.error('Delete service failed:', err);
+    alert('Failed to delete service. Please try again.');
+  }
+};
+
 const filterProviders = () => {};
 </script>
 
 <style scoped>
-/* ... your existing provider styles ... */
 .providers-container {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   padding: 16px;
@@ -1326,10 +1338,17 @@ const filterProviders = () => {};
 .service-item {
   background: #f8f9fa;
   border-radius: 8px;
-  padding: 12px;
+  padding: 16px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  border: 1px solid #e0e5ff;
+  transition: all 0.2s ease;
+}
+
+.service-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-color: #4285f4;
 }
 
 .service-info {
@@ -1341,35 +1360,96 @@ const filterProviders = () => {};
 .service-title {
   font-weight: 600;
   color: #333;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  font-size: 16px;
 }
 
-.service-category,
-.service-subcategory {
+.service-category {
   font-size: 14px;
   color: #666;
   margin-bottom: 4px;
 }
 
+.service-description {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
 .service-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #888;
+  margin-bottom: 8px;
+}
+
+.service-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.service-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.service-status.draft {
+  background: #fff3e0;
+  color: #ff9800;
+}
+
+.service-status.published {
+  background: #e8f5e8;
+  color: #00c853;
+}
+
+.service-status.pending {
+  background: #e3f2fd;
+  color: #2196f3;
+}
+
+.featured-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #fff3e0;
+  color: #ff9800;
 }
 
 .service-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 12px;
 }
 
+.book-btn,
 .edit-btn,
 .delete-btn {
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   transition: background-color 0.2s ease;
+  border: none;
+  white-space: nowrap;
+}
+
+.book-btn {
+  background-color: #00c853;
+  color: white;
+}
+
+.book-btn:hover {
+  background-color: #00b34a;
 }
 
 .edit-btn {
@@ -1428,6 +1508,17 @@ const filterProviders = () => {};
     height: 50px;
     font-size: 24px;
   }
+
+  .service-item {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .service-actions {
+    margin-left: 0;
+    justify-content: flex-end;
+    width: 100%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1480,6 +1571,15 @@ const filterProviders = () => {};
 
   .service-title {
     font-size: 14px;
+  }
+
+  .service-stats {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .service-actions {
+    flex-wrap: wrap;
   }
 }
 </style>

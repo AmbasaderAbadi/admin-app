@@ -89,7 +89,7 @@
           <div v-if="expandedId === customer._id" class="expanded-details">
             <div class="detail-row">
               <span class="detail-label">Phone:</span>
-              <span>{{ customer.phonenumber || '—' }}</span>
+              <span>{{ customer.phoneNumber || '—' }}</span>
             </div>
             <div class="detail-row">
               <span class="detail-label">Address:</span>
@@ -183,7 +183,7 @@
 
           <div class="form-group">
             <label>Phone Number *</label>
-            <input v-model="newCustomer.phonenumber" type="text" required />
+            <input v-model="newCustomer.phoneNumber" type="text" required />
           </div>
 
           <div class="form-group">
@@ -223,7 +223,7 @@ const newCustomer = ref({
   password: '',
   confirmPassword: '',
   address: '',
-  phonenumber: ''
+  phoneNumber: ''
 });
 const isSubmitting = ref(false);
 const passwordMismatch = ref(false);
@@ -272,7 +272,7 @@ const fetchCustomers = async () => {
         _id: user._id,
         fullname: profile.fullname?.trim() || 'Unnamed Customer',
         email: profile.email?.trim() || 'no-email@example.com',
-        phonenumber: profile.phonenumber?.trim() || '—',
+        phoneNumber: profile.phoneNumber?.trim() || '—',
         address: profile.address || '—',
         status: profile.status || 'unknown',
         createdAt: profile.createdAt || user.createdAt || null,
@@ -396,7 +396,7 @@ const addNewCustomer = () => {
     password: '',
     confirmPassword: '',
     address: '',
-    phonenumber: ''
+    phonNnumber: ''
   };
   passwordMismatch.value = false;
   showAddModal.value = true;
@@ -417,9 +417,9 @@ const submitNewCustomer = async () => {
   const email = newCustomer.value.email.trim();
   const password = newCustomer.value.password;
   const address = newCustomer.value.address.trim();
-  const phonenumber = newCustomer.value.phonenumber.trim();
+  const phoneNumber = newCustomer.value.phoneNumber.trim();
 
-  if (!fullname || !email || !password || !address || !phonenumber) {
+  if (!fullname || !email || !password || !address || !phoneNumber) {
     alert('All fields are required.');
     return;
   }
@@ -431,7 +431,7 @@ const submitNewCustomer = async () => {
       email,
       password,
       address,
-      phonenumber,
+      phoneNumber,
       role: 'customer'
     });
 

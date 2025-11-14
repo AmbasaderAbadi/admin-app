@@ -62,11 +62,6 @@
           >
             ← Back
           </button>
-          <div class="title">Admin</div>
-        </div>
-        <div class="actions">
-          <div style="color: var(--muted)">Welcome, Admin</div>
-          <button class="btn" @click="logout">Logout</button>
         </div>
       </header>
 
@@ -159,12 +154,6 @@ const handleClickOutside = (event) => {
       hamburgerBtn && !hamburgerBtn.contains(event.target)) {
     isSidebarExpanded.value = false
   }
-}
-
-// Actions
-const logout = () => {
-  localStorage.removeItem('admin_token')
-  router.push('/login')
 }
 
 const goSettings = () => {
@@ -373,11 +362,6 @@ onBeforeUnmount(() => {
   border-color: #adb5bd;
 }
 
-.title {
-  font-size: 20px;
-  font-weight: bold;
-}
-
 .content {
   flex: 1;
   overflow-y: auto;
@@ -405,6 +389,7 @@ onBeforeUnmount(() => {
     width: 30px;
     height: 30px;
     font-size: 24px;
+    z-index: 1300;
   }
   
   /* On mobile, hamburger button stays fixed in left corner */
@@ -426,7 +411,7 @@ onBeforeUnmount(() => {
     width: 260px;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
-    z-index: 999;
+    z-index: 1200;
   }
   
   .sidebar.sidebar-expanded {
@@ -472,11 +457,13 @@ onBeforeUnmount(() => {
   .hamburger-btn {
     top: 50px;
     left: 15px;
+    z-index: 1300;
   }
   
   .sidebar {
     position: static;
     height: 100vh;
+    z-index: 1200;
   }
   
   .sidebar:not(.sidebar-expanded) {

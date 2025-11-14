@@ -1,123 +1,217 @@
 <template>
-  <div class="services-container">
-    <!-- Category Detail Header (when viewing sub-services) -->
-    <div v-if="selectedCategory" class="category-detail-header">
-      <button class="back-btn" @click="goBackToCategories">
-        ← Back to Categories
-      </button>
-      <h1>{{ selectedCategory.name }} - Sub Services</h1>
-      <button class="add-btn" @click="showAddSubServiceModal = true">
-        <span>+</span> Add Sub Service
-      </button>
-    </div>
-
-    <!-- Main Header (category list view) -->
-    <div v-else class="header">
-      <h1>Service Categories</h1>
-      <button class="add-btn" @click="showAddModal = true">
-        <span>+</span> Add New Category
-      </button>
-    </div>
-
-    <!-- Search Bar -->
-    <div class="search-bar">
-      <input 
-        v-model="searchQuery"
-        type="text" 
-        :placeholder="selectedCategory ? 'Search sub-services...' : 'Search categories...'"
-        @input="filterItems"
-      />
-    </div>
-
-    <!-- Loading & Error States -->
-    <div v-if="loading" class="status-message">Loading {{ selectedCategory ? 'sub-services' : 'categories' }}...</div>
-    <div v-else-if="error" class="status-message error">{{ error }}</div>
-
-    <!-- Category List View -->
-    <div v-else-if="!selectedCategory" class="services-list">
-      <div 
-        v-for="(category, index) in displayedCategories" 
-        :key="category._id" 
-        class="service-card"
-        @click="viewCategoryDetails(category)"
-      >
-        <div class="service-info">
-          <div class="service-name">{{ category.name }}</div>
-          <div class="service-description">{{ category.description || 'No description' }}</div>
-          <div class="service-stats">
-            <span>Sub Services: {{ category.subCategories?.length || 0 }}</span>
-            <span>Providers: {{ category.providerCount || 0 }}</span>
-            <span>Created: {{ formatDate(category.createdAt) }}</span>
+  <div class="services-dashboard">
+    <!-- Header Section -->
+    <div class="dashboard-header">
+      <div class="header-background">
+        <div class="header-content">
+          <div class="header-text">
+            <h1 class="page-title">{{ getPageTitle() }}</h1>
+            <p class="page-subtitle">{{ getPageDescription() }}</p>
+          </div>
+          <div class="header-actions">
+            <button 
+              v-if="!selectedCategory" 
+              class="btn-primary btn-add" 
+              @click="showAddModal = true"
+            >
+              <span class="btn-icon">+</span>
+              New Category
+            </button>
+            <button 
+              v-if="selectedCategory" 
+              class="btn-primary btn-add" 
+              @click="showAddSubCategoryModal = true"
+            >
+              <span class="btn-icon">+</span>
+              New Sub-Category
+            </button>
           </div>
         </div>
+      </div>
+    </div>
 
-        <!-- Action Buttons -->
-        <div class="service-actions" @click.stop>
-          <button class="more-options" @click="toggleMenu(index)">
-            ⋮
-          </button>
-          
+    <!-- Breadcrumb Navigation -->
+    <div class="breadcrumb-nav">
+      <div class="breadcrumb-content">
+        <div 
+          class="breadcrumb-item" 
+          :class="{ 'active': !selectedCategory }"
+          @click="goToRoot"
+        >
+          <span class="breadcrumb-icon">📁</span>
+          <span class="breadcrumb-text">Service Categories</span>
+        </div>
+        <div v-if="selectedCategory" class="breadcrumb-separator">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div 
+          v-if="selectedCategory" 
+          class="breadcrumb-item active"
+        >
+          <span class="breadcrumb-icon">{{ getCategoryIcon(selectedCategory.name) }}</span>
+          <span class="breadcrumb-text">{{ selectedCategory.name }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Section -->
+    <div class="search-section">
+      <div class="search-container">
+        <div class="search-input-wrapper">
+          <span class="search-icon">🔍</span>
+          <input 
+            v-model="searchQuery"
+            type="text" 
+            :placeholder="getSearchPlaceholder()"
+            class="search-input"
+            @input="filterItems"
+          />
+          <div class="search-results">
+            {{ getResultsCount() }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="dashboard-content">
+      <!-- Loading & Error States -->
+      <div v-if="loading" class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>{{ getLoadingMessage() }}</p>
+      </div>
+      <div v-else-if="error" class="error-state">
+        <div class="error-icon">⚠️</div>
+        <h3>Something went wrong</h3>
+        <p>{{ error }}</p>
+        <button class="btn-secondary" @click="fetchCategories">Try Again</button>
+      </div>
+
+      <!-- Category List View -->
+      <div v-else-if="!selectedCategory" class="categories-view">
+        <div class="grid-container">
           <div 
-            v-if="openMenuIndex === index" 
-            class="dropdown-menu"
-            @click.stop
+            v-for="(category, index) in displayedCategories" 
+            :key="category._id" 
+            class="category-card"
+            @click="viewCategoryDetails(category)"
           >
-            <button @click="editCategory(category)">
-              ✏️ Edit
-            </button>
-            <button class="delete-btn" @click="confirmDelete(category)">
-              🗑️ Delete
+            <div class="card-content">
+              <div class="card-icon">
+                <div class="icon-wrapper">
+                  {{ getCategoryIcon(category.name) }}
+                </div>
+              </div>
+              <div class="card-info">
+                <h3 class="card-title">{{ category.name }}</h3>
+                <p class="card-description">{{ category.description || 'No description available' }}</p>
+                <div class="card-stats">
+                  <div class="stat">
+                    <span class="stat-number">{{ getSubCategoryCount(category) }}</span>
+                    <span class="stat-label">Sub-Categories</span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-actions" @click.stop>
+                <button class="action-btn more-options" @click="toggleMenu(index)">
+                  <span>⋯</span>
+                </button>
+                <div 
+                  v-if="openMenuIndex === index" 
+                  class="dropdown-menu"
+                  @click.stop
+                >
+                  <button @click="editCategory(category)" class="dropdown-item">
+                    <span class="item-icon">✏️</span>
+                    Edit Category
+                  </button>
+                  <button class="dropdown-item delete-btn" @click="confirmDelete(category, 'category')">
+                    <span class="item-icon">🗑️</span>
+                    Delete Category
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span class="created-date">Created {{ formatDate(category.createdAt) }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="displayedCategories.length === 0" class="empty-state">
+          <div class="empty-illustration">
+            <div class="empty-icon">📁</div>
+            <h3>No Categories Found</h3>
+            <p>Get started by creating your first service category</p>
+            <button class="btn-primary empty-btn" @click="showAddModal = true">
+              <span class="btn-icon">+</span>
+              Create Category
             </button>
           </div>
         </div>
       </div>
 
-      <div v-if="displayedCategories.length === 0" class="no-results">
-        No service categories found
-      </div>
-    </div>
-
-    <!-- Sub-Service List View -->
-    <div v-else class="subservices-list">
-      <div 
-        v-for="(subService, index) in displayedSubServices" 
-        :key="subService._id" 
-        class="subservice-card"
-        @click="viewSubServiceDetails(subService)"
-      >
-        <div class="subservice-info">
-          <div class="subservice-name">{{ subService.name }}</div>
-          <div class="subservice-description">{{ subService.description || 'No description' }}</div>
-          <div class="subservice-stats">
-            <span>Created: {{ formatDate(subService.createdAt) }}</span>
-            <span>Providers: {{ subService.providerCount || 0 }}</span>
-            <span>Bookings: {{ subService.bookingCount || 0 }}</span>
-          </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="subservice-actions" @click.stop>
-          <button class="more-options" @click="toggleSubServiceMenu(index)">
-            ⋮
-          </button>
-          
+      <!-- Sub-Category List View -->
+      <div v-else class="subcategories-view">
+        <div class="grid-container">
           <div 
-            v-if="openSubServiceMenuIndex === index" 
-            class="dropdown-menu"
-            @click.stop
+            v-for="(subCategory, index) in displayedSubCategories" 
+            :key="subCategory._id" 
+            class="subcategory-card"
           >
-            <button @click="editSubService(subService)">
-              ✏️ Edit
-            </button>
-            <button class="delete-btn" @click="confirmDeleteSubService(subService)">
-              🗑️ Delete
+            <div class="card-content">
+              <div class="card-icon">
+                <div class="icon-wrapper">
+                  {{ getSubCategoryIcon(subCategory.name) }}
+                </div>
+              </div>
+              <div class="card-info">
+                <h3 class="card-title">{{ subCategory.name }}</h3>
+                <p class="card-description">{{ subCategory.description || 'No description available' }}</p>
+                <div class="card-stats">
+                  <div class="stat">
+                    <span class="stat-number">{{ subCategory.providerCount || 0 }}</span>
+                    <span class="stat-label">Providers</span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-actions" @click.stop>
+                <button class="action-btn more-options" @click="toggleSubCategoryMenu(index)">
+                  <span>⋯</span>
+                </button>
+                <div 
+                  v-if="openSubCategoryMenuIndex === index" 
+                  class="dropdown-menu"
+                  @click.stop
+                >
+                  <button @click="editSubCategory(subCategory)" class="dropdown-item">
+                    <span class="item-icon">✏️</span>
+                    Edit Sub-Category
+                  </button>
+                  <button class="dropdown-item delete-btn" @click="confirmDelete(subCategory, 'subcategory')">
+                    <span class="item-icon">🗑️</span>
+                    Delete Sub-Category
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span class="created-date">Created {{ formatDate(subCategory.createdAt) }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="displayedSubCategories.length === 0" class="empty-state">
+          <div class="empty-illustration">
+            <div class="empty-icon">📂</div>
+            <h3>No Sub-Categories Found</h3>
+            <p>Add sub-categories to "{{ selectedCategory.name }}"</p>
+            <button class="btn-primary empty-btn" @click="showAddSubCategoryModal = true">
+              <span class="btn-icon">+</span>
+              Create Sub-Category
             </button>
           </div>
         </div>
-      </div>
-
-      <div v-if="displayedSubServices.length === 0" class="no-results">
-        No sub-services found for this category
       </div>
     </div>
 
@@ -132,17 +226,17 @@
         <form @submit.prevent="addCategory" class="add-form">
           <div class="form-group">
             <label>Category Name *</label>
-            <input v-model="newCategory.name" type="text" required />
+            <input v-model="newCategory.name" type="text" required placeholder="Enter category name" />
           </div>
 
           <div class="form-group">
             <label>Description</label>
-            <textarea v-model="newCategory.description" rows="3"></textarea>
+            <textarea v-model="newCategory.description" rows="3" placeholder="Enter category description"></textarea>
           </div>
 
           <div class="form-actions">
-            <button type="button" class="btn-cancel" @click="closeAddModal">Cancel</button>
-            <button type="submit" class="btn-submit" :disabled="isSubmitting">
+            <button type="button" class="btn btn-cancel" @click="closeAddModal">Cancel</button>
+            <button type="submit" class="btn btn-submit" :disabled="isSubmitting">
               {{ isSubmitting ? 'Adding...' : 'Add Category' }}
             </button>
           </div>
@@ -150,39 +244,29 @@
       </div>
     </div>
 
-    <!-- Add Sub-Service Modal -->
-    <div v-if="showAddSubServiceModal" class="modal-overlay" @click="closeAddSubServiceModal">
+    <!-- Add Sub-Category Modal -->
+    <div v-if="showAddSubCategoryModal" class="modal-overlay" @click="closeAddSubCategoryModal">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h2>Add Sub-Service to {{ selectedCategory?.name }}</h2>
-          <button class="close-btn" @click="closeAddSubServiceModal">×</button>
+          <h2>Add Sub-Category to {{ selectedCategory?.name }}</h2>
+          <button class="close-btn" @click="closeAddSubCategoryModal">×</button>
         </div>
 
-        <form @submit.prevent="addSubService" class="add-form">
+        <form @submit.prevent="addSubCategory" class="add-form">
           <div class="form-group">
-            <label>Sub-Service Name *</label>
-            <input v-model="newSubService.name" type="text" required />
+            <label>Sub-Category Name *</label>
+            <input v-model="newSubCategory.name" type="text" required placeholder="Enter sub-category name" />
           </div>
 
           <div class="form-group">
             <label>Description</label>
-            <textarea v-model="newSubService.description" rows="3"></textarea>
-          </div>
-
-          <div class="form-group">
-            <label>Price</label>
-            <input v-model.number="newSubService.price" type="number" min="0" step="0.01" />
-          </div>
-
-          <div class="form-group">
-            <label>Duration (minutes)</label>
-            <input v-model.number="newSubService.duration" type="number" min="1" />
+            <textarea v-model="newSubCategory.description" rows="3" placeholder="Enter sub-category description"></textarea>
           </div>
 
           <div class="form-actions">
-            <button type="button" class="btn-cancel" @click="closeAddSubServiceModal">Cancel</button>
-            <button type="submit" class="btn-submit" :disabled="isSubmitting">
-              {{ isSubmitting ? 'Adding...' : 'Add Sub-Service' }}
+            <button type="button" class="btn btn-cancel" @click="closeAddSubCategoryModal">Cancel</button>
+            <button type="submit" class="btn btn-submit" :disabled="isSubmitting">
+              {{ isSubmitting ? 'Adding...' : 'Add Sub-Category' }}
             </button>
           </div>
         </form>
@@ -209,8 +293,8 @@
           </div>
 
           <div class="form-actions">
-            <button type="button" class="btn-cancel" @click="cancelEdit">Cancel</button>
-            <button type="submit" class="btn-submit" :disabled="isSubmitting">
+            <button type="button" class="btn btn-cancel" @click="cancelEdit">Cancel</button>
+            <button type="submit" class="btn btn-submit" :disabled="isSubmitting">
               {{ isSubmitting ? 'Saving...' : 'Save Changes' }}
             </button>
           </div>
@@ -218,123 +302,32 @@
       </div>
     </div>
 
-    <!-- Edit Sub-Service Modal -->
-    <div v-if="editingSubService" class="modal-overlay" @click="cancelEditSubService">
+    <!-- Edit Sub-Category Modal -->
+    <div v-if="editingSubCategory" class="modal-overlay" @click="cancelEditSubCategory">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h2>Edit Sub-Service</h2>
-          <button class="close-btn" @click="cancelEditSubService">×</button>
+          <h2>Edit Sub-Category</h2>
+          <button class="close-btn" @click="cancelEditSubCategory">×</button>
         </div>
 
-        <form @submit.prevent="updateSubService" class="add-form">
+        <form @submit.prevent="updateSubCategory" class="add-form">
           <div class="form-group">
-            <label>Sub-Service Name *</label>
-            <input v-model="editingSubService.name" type="text" required />
+            <label>Sub-Category Name *</label>
+            <input v-model="editingSubCategory.name" type="text" required />
           </div>
 
           <div class="form-group">
             <label>Description</label>
-            <textarea v-model="editingSubService.description" rows="3"></textarea>
-          </div>
-
-          <div class="form-group">
-            <label>Price</label>
-            <input v-model.number="editingSubService.price" type="number" min="0" step="0.01" />
-          </div>
-
-          <div class="form-group">
-            <label>Duration (minutes)</label>
-            <input v-model.number="editingSubService.duration" type="number" min="1" />
+            <textarea v-model="editingSubCategory.description" rows="3"></textarea>
           </div>
 
           <div class="form-actions">
-            <button type="button" class="btn-cancel" @click="cancelEditSubService">Cancel</button>
-            <button type="submit" class="btn-submit" :disabled="isSubmitting">
+            <button type="button" class="btn btn-cancel" @click="cancelEditSubCategory">Cancel</button>
+            <button type="submit" class="btn btn-submit" :disabled="isSubmitting">
               {{ isSubmitting ? 'Saving...' : 'Save Changes' }}
             </button>
           </div>
         </form>
-      </div>
-    </div>
-
-    <!-- Sub-Service Detail Modal -->
-    <div v-if="selectedSubService" class="modal-overlay" @click="closeSubServiceDetailModal">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h2>{{ selectedSubService.name }} Details</h2>
-          <button class="close-btn" @click="closeSubServiceDetailModal">×</button>
-        </div>
-
-        <div class="detail-body">
-          <!-- Basic Info -->
-          <div class="section">
-            <h3>📋 Sub-Service Information</h3>
-            <div class="detail-row">
-              <span class="label">Name:</span>
-              <span class="value">{{ selectedSubService.name || '—' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Description:</span>
-              <span class="value">{{ selectedSubService.description || '—' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Price:</span>
-              <span class="value">${{ selectedSubService.price || '0.00' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Duration:</span>
-              <span class="value">{{ selectedSubService.duration || '—' }} mins</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Created:</span>
-              <span class="value">{{ formatDate(selectedSubService.createdAt) }}</span>
-            </div>
-          </div>
-
-          <!-- Providers in this sub-service -->
-          <div class="section">
-            <h3>🔧 Service Providers ({{ selectedSubService.providers?.length || 0 }})</h3>
-            <div class="providers-list" v-if="selectedSubService.providers && selectedSubService.providers.length > 0">
-              <div 
-                v-for="provider in selectedSubService.providers" 
-                :key="provider._id"
-                class="provider-in-service"
-              >
-                <div class="provider-name">{{ provider.fullname }}</div>
-                <div class="provider-status">{{ provider.status }}</div>
-              </div>
-            </div>
-            <div v-else class="no-data-message">
-              No service providers offering this sub-service yet.
-            </div>
-          </div>
-
-          <!-- Bookings for this sub-service -->
-          <div class="section">
-            <h3>📅 Bookings ({{ selectedSubService.bookings?.length || 0 }})</h3>
-            <div class="bookings-list" v-if="selectedSubService.bookings && selectedSubService.bookings.length > 0">
-              <div 
-                v-for="booking in selectedSubService.bookings" 
-                :key="booking._id"
-                class="booking-in-service"
-              >
-                <div class="booking-info">
-                  <div class="booking-customer">{{ booking.customer?.fullname || '—' }}</div>
-                  <div class="booking-date">{{ formatDate(booking.bookingDate) }}</div>
-                  <div class="booking-status">{{ booking.status }}</div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="no-data-message">
-              No bookings for this sub-service yet.
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="modal-footer">
-            <button class="btn btn-secondary" @click="closeSubServiceDetailModal">Close</button>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -342,23 +335,26 @@
     <div v-if="deleteConfirm" class="modal-overlay" @click="cancelDelete">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h2>Delete {{ deleteConfirm.type === 'category' ? 'Category' : 'Sub-Service' }}</h2>
+          <h2>Delete {{ deleteConfirm.type }}</h2>
           <button class="close-btn" @click="cancelDelete">×</button>
         </div>
 
         <div class="modal-body">
+          <div class="warning-icon">⚠️</div>
           <p>Are you sure you want to delete "{{ deleteConfirm.item.name }}"?</p>
-          <p v-if="deleteConfirm.type === 'category'" class="warning-text">
-            This will remove all sub-services and providers in this category.
+          <p class="warning-text" v-if="deleteConfirm.type === 'category'">
+            This will remove all sub-categories and services in this category.
           </p>
-          <p v-else class="warning-text">
-            This will remove this sub-service from the category.
+          <p class="warning-text" v-else-if="deleteConfirm.type === 'subcategory'">
+            This will remove all services associated with this sub-category.
           </p>
         </div>
 
         <div class="modal-footer">
           <button class="btn btn-secondary" @click="cancelDelete">Cancel</button>
-          <button class="btn btn-danger" @click="performDelete">Delete</button>
+          <button class="btn btn-danger" @click="performDelete" :disabled="isSubmitting">
+            {{ isSubmitting ? 'Deleting...' : 'Delete' }}
+          </button>
         </div>
       </div>
     </div>
@@ -372,25 +368,22 @@ import http from '../../../core/api/http';
 // Reactive State
 const categories = ref([]);
 const selectedCategory = ref(null);
-const subServices = ref([]);
-const selectedSubService = ref(null);
+const subCategories = ref([]);
 const searchQuery = ref('');
 const loading = ref(false);
 const error = ref('');
 const openMenuIndex = ref(null);
-const openSubServiceMenuIndex = ref(null);
+const openSubCategoryMenuIndex = ref(null);
+const showAddModal = ref(false);
+const showAddSubCategoryModal = ref(false);
 const editingCategory = ref(null);
-const editingSubService = ref(null);
+const editingSubCategory = ref(null);
 const deleteConfirm = ref(null);
 const isSubmitting = ref(false);
 
 // Form Data
 const newCategory = ref({ name: '', description: '' });
-const newSubService = ref({ name: '', description: '', price: '', duration: '' });
-
-// Modal State
-const showAddModal = ref(false);
-const showAddSubServiceModal = ref(false);
+const newSubCategory = ref({ name: '', description: '' });
 
 // Fetch Data
 onMounted(() => {
@@ -404,85 +397,74 @@ onBeforeUnmount(() => {
 
 const handleClickOutside = () => {
   openMenuIndex.value = null;
-  openSubServiceMenuIndex.value = null;
+  openSubCategoryMenuIndex.value = null;
 };
 
 const fetchCategories = async () => {
   loading.value = true;
   error.value = '';
   try {
-    // ✅ Use CORRECT endpoint: /infinity-booking/categories
     const response = await http.get('/infinity-booking/categories');
-    const rawCategories = Array.isArray(response.data) ? response.data : [];
-
-    categories.value = rawCategories.map(cat => ({
-      ...cat,
-      subCategories: cat.subCategories || [],
-      providerCount: cat.providerCount || 0
-    }));
-
-    // If viewing a specific category, refresh its sub-services
-    if (selectedCategory.value) {
-      const updatedCategory = categories.value.find(c => c._id === selectedCategory.value._id);
-      if (updatedCategory) {
-        selectedCategory.value = updatedCategory;
-        fetchSubServices(updatedCategory._id);
-      }
-    }
+    categories.value = Array.isArray(response.data) ? response.data : [];
+    
+    // Fetch subcategory counts for each category
+    await Promise.all(
+      categories.value.map(async (category) => {
+        try {
+          const subCatResponse = await http.get(`/infinity-booking/categories/${category._id}/subcategories`);
+          category.subCategories = Array.isArray(subCatResponse.data) ? subCatResponse.data : [];
+        } catch (err) {
+          console.error(`Failed to fetch subcategories for category ${category._id}:`, err);
+          category.subCategories = [];
+        }
+      })
+    );
   } catch (err) {
     console.error('Failed to fetch categories:', err);
-    error.value = err?.response?.data?.message || 'Failed to load service categories. Please try again later.';
+    error.value = err?.response?.data?.message || 'Failed to load service categories.';
     categories.value = [];
   } finally {
     loading.value = false;
   }
 };
 
-const fetchSubServices = async (categoryId) => {
+const fetchSubCategories = async (categoryId) => {
   loading.value = true;
   error.value = '';
   try {
-    // ✅ Use CORRECT endpoint: /infinity-booking/categories/{id}/subcategories
     const response = await http.get(`/infinity-booking/categories/${categoryId}/subcategories`);
-    subServices.value = Array.isArray(response.data) ? response.data : [];
+    subCategories.value = Array.isArray(response.data) ? response.data : [];
+    
+    // Update the category's subCategories array
+    const categoryIndex = categories.value.findIndex(cat => cat._id === categoryId);
+    if (categoryIndex !== -1) {
+      categories.value[categoryIndex].subCategories = subCategories.value;
+    }
   } catch (err) {
-    console.error('Failed to fetch sub-services:', err);
-    error.value = err?.response?.data?.message || 'Failed to load sub-services. Please try again.';
-    subServices.value = [];
+    console.error('Failed to fetch sub-categories:', err);
+    error.value = err?.response?.data?.message || 'Failed to load sub-categories.';
+    subCategories.value = [];
   } finally {
     loading.value = false;
   }
 };
 
 // Navigation
-const viewCategoryDetails = (category) => {
+const viewCategoryDetails = async (category) => {
   selectedCategory.value = category;
-  fetchSubServices(category._id);
+  await fetchSubCategories(category._id);
 };
 
 const goBackToCategories = () => {
   selectedCategory.value = null;
-  subServices.value = [];
+  subCategories.value = [];
   searchQuery.value = '';
 };
 
-// View Sub-Service Details
-const viewSubServiceDetails = async (subService) => {
-  selectedSubService.value = subService;
-  
-  // Fetch detailed information for this sub-service
-  try {
-    // ✅ Use CORRECT endpoint: /infinity-booking/services/{id}/details
-    const response = await http.get(`/infinity-booking/services/${subService._id}/details`);
-    selectedSubService.value = {
-      ...subService,
-      ...response.data
-    };
-  } catch (err) {
-    console.error('Failed to fetch sub-service details:', err);
-    // Use basic data if details endpoint fails
-    selectedSubService.value = subService;
-  }
+const goToRoot = () => {
+  selectedCategory.value = null;
+  subCategories.value = [];
+  searchQuery.value = '';
 };
 
 // Filtering
@@ -496,11 +478,11 @@ const displayedCategories = computed(() => {
   );
 });
 
-const displayedSubServices = computed(() => {
-  if (!searchQuery.value.trim()) return subServices.value;
+const displayedSubCategories = computed(() => {
+  if (!searchQuery.value.trim()) return subCategories.value;
   
   const term = searchQuery.value.toLowerCase().trim();
-  return subServices.value.filter(sub => 
+  return subCategories.value.filter(sub => 
     (sub.name || '').toLowerCase().includes(term) ||
     (sub.description && sub.description.toLowerCase().includes(term))
   );
@@ -510,7 +492,7 @@ const filterItems = () => {
   // Computed properties handle filtering
 };
 
-// Category CRUD
+// CRUD Operations
 const addCategory = async () => {
   if (!newCategory.value.name.trim()) {
     alert('Category name is required!');
@@ -519,18 +501,14 @@ const addCategory = async () => {
 
   isSubmitting.value = true;
   try {
-    // ✅ Use CORRECT endpoint: /infinity-booking/categories
     const response = await http.post('/infinity-booking/categories', {
       name: newCategory.value.name.trim(),
       description: newCategory.value.description?.trim() || ''
     });
 
-    categories.value.push({
-      ...response.data,
-      subCategories: [],
-      providerCount: 0
-    });
-    
+    // Add empty subCategories array to the new category
+    const newCategoryWithSubs = { ...response.data, subCategories: [] };
+    categories.value.push(newCategoryWithSubs);
     closeAddModal();
     alert('Category added successfully!');
   } catch (err) {
@@ -549,7 +527,6 @@ const updateCategory = async () => {
 
   isSubmitting.value = true;
   try {
-    // ✅ Use CORRECT endpoint: /infinity-booking/categories/{id}
     const response = await http.put(`/infinity-booking/categories/${editingCategory.value._id}`, {
       name: editingCategory.value.name.trim(),
       description: editingCategory.value.description?.trim() || ''
@@ -557,14 +534,11 @@ const updateCategory = async () => {
 
     const index = categories.value.findIndex(c => c._id === editingCategory.value._id);
     if (index !== -1) {
-      categories.value[index] = {
-        ...response.data,
-        subCategories: categories.value[index].subCategories || []
+      // Preserve the subCategories array when updating
+      categories.value[index] = { 
+        ...response.data, 
+        subCategories: categories.value[index].subCategories || [] 
       };
-      
-      if (selectedCategory.value?._id === editingCategory.value._id) {
-        selectedCategory.value = categories.value[index];
-      }
     }
 
     cancelEdit();
@@ -577,127 +551,135 @@ const updateCategory = async () => {
   }
 };
 
-// Sub-Service CRUD
-const addSubService = async () => {
-  if (!newSubService.value.name.trim()) {
-    alert('Sub-service name is required!');
+const addSubCategory = async () => {
+  if (!newSubCategory.value.name.trim()) {
+    alert('Sub-category name is required!');
     return;
   }
 
   isSubmitting.value = true;
   try {
-    // ✅ Use CORRECT endpoint: /infinity-booking/categories/{id}/subcategories
     const response = await http.post(`/infinity-booking/categories/${selectedCategory.value._id}/subcategories`, {
-      name: newSubService.value.name.trim(),
-      description: newSubService.value.description?.trim() || '',
-      price: parseFloat(newSubService.value.price) || 0,
-      duration: parseInt(newSubService.value.duration) || 30
+      name: newSubCategory.value.name.trim(),
+      description: newSubCategory.value.description?.trim() || ''
     });
 
-    subServices.value.push(response.data);
+    const newSubCategoryWithDefaults = { 
+      ...response.data, 
+      providerCount: 0 
+    };
     
-    // Update category in main list
-    const categoryIndex = categories.value.findIndex(c => c._id === selectedCategory.value._id);
+    subCategories.value.push(newSubCategoryWithDefaults);
+    
+    // Update the category's subCategories array
+    const categoryIndex = categories.value.findIndex(cat => cat._id === selectedCategory.value._id);
     if (categoryIndex !== -1) {
-      categories.value[categoryIndex] = {
-        ...categories.value[categoryIndex],
-        subCategories: [...(categories.value[categoryIndex].subCategories || []), response.data]
-      };
+      if (!categories.value[categoryIndex].subCategories) {
+        categories.value[categoryIndex].subCategories = [];
+      }
+      categories.value[categoryIndex].subCategories.push(newSubCategoryWithDefaults);
     }
-
-    closeAddSubServiceModal();
-    alert('Sub-service added successfully!');
+    
+    closeAddSubCategoryModal();
+    alert('Sub-category added successfully!');
   } catch (err) {
-    console.error('Add sub-service error:', err);
-    alert(err?.response?.data?.message || 'Failed to add sub-service. Please try again.');
+    console.error('Add sub-category error:', err);
+    alert(err?.response?.data?.message || 'Failed to add sub-category. Please try again.');
   } finally {
     isSubmitting.value = false;
   }
 };
 
-const updateSubService = async () => {
-  if (!editingSubService.value.name.trim()) {
-    alert('Sub-service name is required!');
+const updateSubCategory = async () => {
+  if (!editingSubCategory.value.name.trim()) {
+    alert('Sub-category name is required!');
     return;
   }
 
   isSubmitting.value = true;
   try {
-    // ✅ Use CORRECT endpoint: /infinity-booking/categories/subcategories/{subId}
-    const response = await http.put(`/infinity-booking/categories/subcategories/${editingSubService.value._id}`, {
-      name: editingSubService.value.name.trim(),
-      description: editingSubService.value.description?.trim() || '',
-      price: parseFloat(editingSubService.value.price) || 0,
-      duration: parseInt(editingSubService.value.duration) || 30
+    const response = await http.put(`/infinity-booking/categories/subcategories/${editingSubCategory.value._id}`, {
+      name: editingSubCategory.value.name.trim(),
+      description: editingSubCategory.value.description?.trim() || ''
     });
 
-    const index = subServices.value.findIndex(s => s._id === editingSubService.value._id);
+    const index = subCategories.value.findIndex(s => s._id === editingSubCategory.value._id);
     if (index !== -1) {
-      subServices.value[index] = response.data;
+      subCategories.value[index] = response.data;
     }
 
-    // Update in categories list
-    const categoryIndex = categories.value.findIndex(c => c._id === selectedCategory.value._id);
-    if (categoryIndex !== -1) {
-      const subIndex = categories.value[categoryIndex].subCategories.findIndex(s => s._id === editingSubService.value._id);
+    // Update in categories array as well
+    const categoryIndex = categories.value.findIndex(cat => cat._id === selectedCategory.value._id);
+    if (categoryIndex !== -1 && categories.value[categoryIndex].subCategories) {
+      const subIndex = categories.value[categoryIndex].subCategories.findIndex(
+        sub => sub._id === editingSubCategory.value._id
+      );
       if (subIndex !== -1) {
         categories.value[categoryIndex].subCategories[subIndex] = response.data;
       }
     }
 
-    cancelEditSubService();
-    alert('Sub-service updated successfully!');
+    cancelEditSubCategory();
+    alert('Sub-category updated successfully!');
   } catch (err) {
-    console.error('Update sub-service error:', err);
-    alert(err?.response?.data?.message || 'Failed to update sub-service. Please try again.');
+    console.error('Update sub-category error:', err);
+    alert(err?.response?.data?.message || 'Failed to update sub-category. Please try again.');
   } finally {
     isSubmitting.value = false;
   }
 };
 
-// Delete Operations
+const deleteCategory = async (category) => {
+  isSubmitting.value = true;
+  try {
+    await http.delete(`/infinity-booking/categories/${category._id}`);
+    categories.value = categories.value.filter(c => c._id !== category._id);
+    if (selectedCategory.value?._id === category._id) {
+      goBackToCategories();
+    }
+    alert('Category deleted successfully!');
+  } catch (err) {
+    console.error('Delete category error:', err);
+    alert(err?.response?.data?.message || 'Failed to delete category. Please try again.');
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
+const deleteSubCategory = async (subCategory) => {
+  isSubmitting.value = true;
+  try {
+    await http.delete(`/infinity-booking/categories/subcategories/${subCategory._id}`);
+    subCategories.value = subCategories.value.filter(s => s._id !== subCategory._id);
+    
+    // Update the category's subCategories array
+    const categoryIndex = categories.value.findIndex(cat => cat._id === selectedCategory.value._id);
+    if (categoryIndex !== -1 && categories.value[categoryIndex].subCategories) {
+      categories.value[categoryIndex].subCategories = categories.value[categoryIndex].subCategories.filter(
+        sub => sub._id !== subCategory._id
+      );
+    }
+    
+    alert('Sub-category deleted successfully!');
+  } catch (err) {
+    console.error('Delete sub-category error:', err);
+    alert(err?.response?.data?.message || 'Failed to delete sub-category. Please try again.');
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
 const confirmDelete = (item, type) => {
   deleteConfirm.value = { item, type };
 };
 
-const confirmDeleteSubService = (subService) => {
-  confirmDelete(subService, 'subservice');
-};
-
 const performDelete = async () => {
-  isSubmitting.value = true;
-  try {
-    if (deleteConfirm.value.type === 'category') {
-      // ✅ Use CORRECT endpoint: /infinity-booking/categories/{id}
-      await http.delete(`/infinity-booking/categories/${deleteConfirm.value.item._id}`);
-      categories.value = categories.value.filter(c => c._id !== deleteConfirm.value.item._id);
-      
-      if (selectedCategory.value?._id === deleteConfirm.value.item._id) {
-        goBackToCategories();
-      }
-    } else {
-      // ✅ Use CORRECT endpoint: /infinity-booking/categories/subcategories/{id}
-      await http.delete(`/infinity-booking/categories/subcategories/${deleteConfirm.value.item._id}`);
-      
-      subServices.value = subServices.value.filter(s => s._id !== deleteConfirm.value.item._id);
-      
-      const categoryIndex = categories.value.findIndex(c => c._id === selectedCategory.value._id);
-      if (categoryIndex !== -1) {
-        categories.value[categoryIndex] = {
-          ...categories.value[categoryIndex],
-          subCategories: categories.value[categoryIndex].subCategories.filter(s => s._id !== deleteConfirm.value.item._id)
-        };
-      }
-    }
-    
-    cancelDelete();
-    alert(`${deleteConfirm.value.type === 'category' ? 'Category' : 'Sub-service'} deleted successfully!`);
-  } catch (err) {
-    console.error('Delete error:', err);
-    alert(err?.response?.data?.message || `Failed to delete ${deleteConfirm.value.type}. Please try again.`);
-  } finally {
-    isSubmitting.value = false;
+  if (deleteConfirm.value.type === 'category') {
+    await deleteCategory(deleteConfirm.value.item);
+  } else if (deleteConfirm.value.type === 'subcategory') {
+    await deleteSubCategory(deleteConfirm.value.item);
   }
+  cancelDelete();
 };
 
 // Menu Toggles
@@ -705,8 +687,8 @@ const toggleMenu = (index) => {
   openMenuIndex.value = openMenuIndex.value === index ? null : index;
 };
 
-const toggleSubServiceMenu = (index) => {
-  openSubServiceMenuIndex.value = openSubServiceMenuIndex.value === index ? null : index;
+const toggleSubCategoryMenu = (index) => {
+  openSubCategoryMenuIndex.value = openSubCategoryMenuIndex.value === index ? null : index;
 };
 
 // Modal Handlers
@@ -715,301 +697,564 @@ const closeAddModal = () => {
   newCategory.value = { name: '', description: '' };
 };
 
-const closeAddSubServiceModal = () => {
-  showAddSubServiceModal.value = false;
-  newSubService.value = { name: '', description: '', price: '', duration: '' };
+const closeAddSubCategoryModal = () => {
+  showAddSubCategoryModal.value = false;
+  newSubCategory.value = { name: '', description: '' };
 };
 
 const editCategory = (category) => {
   editingCategory.value = { ...category };
 };
 
-const editSubService = (subService) => {
-  editingSubService.value = { ...subService };
+const editSubCategory = (subCategory) => {
+  editingSubCategory.value = { ...subCategory };
 };
 
 const cancelEdit = () => {
   editingCategory.value = null;
 };
 
-const cancelEditSubService = () => {
-  editingSubService.value = null;
+const cancelEditSubCategory = () => {
+  editingSubCategory.value = null;
 };
 
 const cancelDelete = () => {
   deleteConfirm.value = null;
 };
 
-const closeSubServiceDetailModal = () => {
-  selectedSubService.value = null;
+// Utility Functions
+const getCategoryIcon = (categoryName) => {
+  if (!categoryName) return '📁';
+  const name = categoryName.toLowerCase();
+  
+  if (name.includes('home') || name.includes('house') || name.includes('garden')) return '🏠';
+  if (name.includes('beauty') || name.includes('spa') || name.includes('hair')) return '💅';
+  if (name.includes('tech') || name.includes('computer') || name.includes('it')) return '💻';
+  if (name.includes('education') || name.includes('tutor')) return '🎓';
+  if (name.includes('transport') || name.includes('ride') || name.includes('delivery')) return '🚗';
+  if (name.includes('food') || name.includes('catering')) return '🍕';
+  if (name.includes('health') || name.includes('medical')) return '🏥';
+  if (name.includes('legal')) return '⚖️';
+  if (name.includes('finance')) return '💰';
+  
+  return '📁';
 };
 
-// Utility Functions
+const getSubCategoryIcon = (subCategoryName) => {
+  if (!subCategoryName) return '📂';
+  const name = subCategoryName.toLowerCase();
+  
+  if (name.includes('plumb') || name.includes('pipe')) return '🔧';
+  if (name.includes('electr') || name.includes('wire')) return '⚡';
+  if (name.includes('clean') || name.includes('wash')) return '🧽';
+  if (name.includes('massage')) return '💆';
+  if (name.includes('hair')) return '💇';
+  if (name.includes('tutor')) return '👨‍🏫';
+  if (name.includes('repair')) return '🛠️';
+  if (name.includes('maintain')) return '🔧';
+  if (name.includes('install')) return '⚙️';
+  
+  return '📂';
+};
+
+const getSubCategoryCount = (category) => {
+  return category.subCategories?.length || 0;
+};
+
 const formatDate = (dateString) => {
   if (!dateString) return '—';
   return new Date(dateString).toLocaleDateString();
 };
+
+const getPageTitle = () => {
+  if (selectedCategory.value) return `Sub-Categories - ${selectedCategory.value.name}`;
+  return 'Service Categories';
+};
+
+const getPageDescription = () => {
+  if (selectedCategory.value) return `Manage sub-categories under ${selectedCategory.value.name}`;
+  return 'Manage and organize your service categories and sub-categories';
+};
+
+const getSearchPlaceholder = () => {
+  if (selectedCategory.value) return 'Search sub-categories...';
+  return 'Search categories...';
+};
+
+const getResultsCount = () => {
+  const count = selectedCategory.value ? displayedSubCategories.value.length : displayedCategories.value.length;
+  const type = selectedCategory.value ? 'sub-categories' : 'categories';
+  return `${count} ${type} found`;
+};
+
+const getLoadingMessage = () => {
+  if (selectedCategory.value) return 'Loading sub-categories...';
+  return 'Loading categories...';
+};
 </script>
 
 <style scoped>
-/* ... your existing styles ... */
-.services-container {
+/* Modern, Professional Styling */
+.services-dashboard {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  padding: 16px;
-  background-color: #f5f7fa;
   min-height: 100vh;
-  max-width: 100%;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e7f4 100%);
+  overflow-x: hidden;
 }
 
-.header {
+/* Header Styles */
+.dashboard-header {
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.header-background {
+  background: linear-gradient(120deg, #4285f4 0%, #3367d6 100%);
+  border-radius: 16px;
+  padding: 32px;
+  color: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.header-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="2" fill="rgba(255,255,255,0.1)"/><circle cx="80" cy="80" r="3" fill="rgba(255,255,255,0.1)"/><circle cx="40" cy="60" r="1" fill="rgba(255,255,255,0.1)"/></svg>');
+  opacity: 0.2;
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e0e5ff;
+  position: relative;
+  z-index: 2;
 }
 
-.header h1 {
-  font-size: 24px;
-  font-weight: bold;
+.header-text {
+  flex-grow: 1;
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.5px;
+}
+
+.page-subtitle {
+  font-size: 16px;
+  font-weight: 400;
+  opacity: 0.9;
   margin: 0;
 }
 
-.add-btn {
-  background-color: #4285f4;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s ease;
-}
-
-.add-btn:hover {
-  background-color: #3367d6;
-}
-
-.search-bar {
-  position: relative;
-  margin-bottom: 20px;
-}
-
-.search-bar input {
-  width: 100%;
-  padding: 12px 20px;
-  border-radius: 8px;
-  border: 1px solid #e0e5ff;
-  font-size: 16px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.search-bar input:focus {
-  border-color: #5a6cff;
-}
-
-.status-message {
-  text-align: center;
-  padding: 20px;
-  color: #666;
-}
-
-.status-message.error {
-  color: #ff5252;
-}
-
-.services-list {
+.header-actions {
   display: flex;
-  flex-direction: column;
-  gap: 15px;
+  gap: 12px;
 }
 
-.service-card {
-  background-color: white;
-  border-radius: 12px;
-  padding: 15px;
+.btn-primary,
+.btn-secondary {
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
   display: flex;
   align-items: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  position: relative;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: white;
+  color: #4285f4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:hover {
+  background: #f8f9fa;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  backdrop-filter: blur(10px);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-icon {
+  font-size: 16px;
+}
+
+/* Breadcrumb Navigation */
+.breadcrumb-nav {
+  margin-bottom: 24px;
+}
+
+.breadcrumb-content {
+  display: flex;
+  align-items: center;
+  background: white;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: box-shadow 0.2s;
-}
-
-.service-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.service-info {
-  flex-grow: 1;
-  min-width: 0;
-}
-
-.service-name {
-  font-size: 18px;
-  font-weight: bold;
-  margin-bottom: 5px;
-}
-
-.service-description {
+  transition: background-color 0.2s ease;
   font-size: 14px;
   color: #666;
-  margin-bottom: 5px;
+}
+
+.breadcrumb-item:hover {
+  background: #f8f9fa;
+}
+
+.breadcrumb-item.active {
+  color: #4285f4;
+  background: #e8f0fe;
+  font-weight: 500;
+}
+
+.breadcrumb-separator {
+  color: #999;
+  margin: 0 8px;
+}
+
+/* Search Section */
+.search-section {
+  margin-bottom: 24px;
+}
+
+.search-container {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.search-input-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.search-input {
+  flex-grow: 1;
+  padding: 14px 50px 14px 48px;
+  border: 2px solid #e0e5ff;
+  border-radius: 10px;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
+}
+
+.search-icon {
+  position: absolute;
+  left: 16px;
+  color: #999;
+  font-size: 18px;
+  z-index: 2;
+}
+
+.search-results {
+  position: absolute;
+  right: 16px;
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Main Content */
+.dashboard-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.category-card,
+.subcategory-card {
+  background: white;
+  border-radius: 16px;
+  padding: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  border: 1px solid #e0e5ff;
+}
+
+.category-card:hover,
+.subcategory-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  border-color: #d0d5ff;
+}
+
+.card-content {
+  display: flex;
+  padding: 20px;
+  position: relative;
+}
+
+.card-icon {
+  margin-right: 16px;
+  flex-shrink: 0;
+}
+
+.icon-wrapper {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  background: #e8f0fe;
+  color: #4285f4;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.card-info {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 8px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-description {
+  font-size: 14px;
+  color: #666;
+  margin: 0 0 12px 0;
+  line-height: 1.5;
   word-break: break-word;
 }
 
-.service-stats {
+.card-stats {
   display: flex;
-  gap: 15px;
+  gap: 20px;
+  margin-top: 12px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-number {
+  font-size: 20px;
+  font-weight: bold;
+  color: #4285f4;
+  margin-bottom: 2px;
+}
+
+.stat-label {
   font-size: 12px;
   color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.service-actions {
+.card-actions {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 16px;
+  right: 16px;
 }
 
-.more-options {
+.action-btn {
   background: none;
   border: none;
   font-size: 20px;
   color: #999;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
-.more-options:hover {
-  background-color: #f0f0f0;
+.action-btn:hover {
+  background: #f8f9fa;
+  color: #666;
 }
 
 .dropdown-menu {
   position: absolute;
   right: 0;
-  top: 28px;
+  top: 40px;
   background: white;
   border: 1px solid #e0e5ff;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  min-width: 130px;
+  min-width: 180px;
   overflow: hidden;
 }
 
-.dropdown-menu button {
-  display: block;
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   width: 100%;
-  padding: 10px 16px;
+  padding: 12px 16px;
   text-align: left;
   background: none;
   border: none;
   font-size: 14px;
   cursor: pointer;
   color: #333;
+  transition: background-color 0.2s ease;
 }
 
-.dropdown-menu button:hover {
-  background-color: #f5f7fa;
+.dropdown-item:hover {
+  background: #f8f9fa;
 }
 
-.dropdown-menu .delete-btn {
+.dropdown-item.delete-btn {
   color: #ff5252;
 }
 
-.dropdown-menu .delete-btn:hover {
-  background-color: #ffebee;
+.dropdown-item.delete-btn:hover {
+  background: #ffebee;
 }
 
-.no-results {
-  text-align: center;
-  color: #888;
-  padding: 20px;
-  font-style: italic;
+.item-icon {
+  font-size: 16px;
 }
 
-/* Category Detail Header */
-.category-detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e0e5ff;
-}
-
-.back-btn {
-  background-color: #f0f0f0;
-  border: 1px solid #ddd;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  color: #333;
-}
-
-.back-btn:hover {
-  background-color: #e0e0e0;
-}
-
-/* Sub-Services List */
-.subservices-list {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.subservice-card {
-  background-color: white;
-  border-radius: 12px;
-  padding: 15px;
-  display: flex;
-  align-items: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  position: relative;
-  cursor: pointer;
-  transition: box-shadow 0.2s;
-}
-
-.subservice-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.subservice-info {
-  flex-grow: 1;
-  min-width: 0;
-}
-
-.subservice-name {
-  font-size: 18px;
-  font-weight: bold;
-  margin-bottom: 5px;
-}
-
-.subservice-description {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 5px;
-  word-break: break-word;
-}
-
-.subservice-stats {
-  display: flex;
-  gap: 15px;
+.card-footer {
+  padding: 12px 20px;
+  background: #f8f9fa;
+  border-top: 1px solid #e0e5ff;
+  border-radius: 0 0 16px 16px;
   font-size: 12px;
   color: #888;
 }
 
-.subservice-actions {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
 }
 
-/* Modal styles */
+.empty-illustration {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.empty-icon {
+  font-size: 64px;
+  opacity: 0.3;
+}
+
+.empty-state h3 {
+  font-size: 24px;
+  color: #333;
+  margin: 0 0 8px 0;
+}
+
+.empty-state p {
+  font-size: 16px;
+  margin: 0 0 20px 0;
+}
+
+.empty-btn {
+  background: #4285f4;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s ease;
+}
+
+.empty-btn:hover {
+  background: #3367d6;
+}
+
+/* Loading & Error States */
+.loading-state {
+  text-align: center;
+  padding: 60px;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #4285f4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-state {
+  text-align: center;
+  padding: 60px;
+  color: #666;
+}
+
+.error-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.error-state h3 {
+  color: #ff5252;
+  margin: 0 0 8px 0;
+}
+
+/* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1025,25 +1270,25 @@ const formatDate = (dateString) => {
 
 .modal-content {
   background: white;
-  border-radius: 12px;
-  width: 92%;
-  max-width: 700px;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 20px 24px;
   border-bottom: 1px solid #e0e5ff;
 }
 
 .modal-header h2 {
   font-size: 20px;
-  font-weight: bold;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -1059,179 +1304,60 @@ const formatDate = (dateString) => {
   color: #333;
 }
 
-.detail-body {
-  padding: 20px;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.section {
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.section:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-
-.section h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.detail-row {
-  display: flex;
-  margin-bottom: 12px;
-  padding: 8px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  align-items: flex-start;
-}
-
-.label {
-  font-weight: 500;
-  color: #333;
-  min-width: 120px;
-  display: block;
-}
-
-.value {
-  flex-grow: 1;
-  color: #555;
-}
-
-.providers-list,
-.bookings-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.provider-in-service,
-.booking-in-service {
-  background: #f0f0f0;
-  border-radius: 8px;
-  padding: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.provider-name,
-.booking-customer {
-  font-weight: 500;
-  color: #333;
-}
-
-.provider-status,
-.booking-status {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: #e8f5e8;
-  color: #00c853;
-}
-
-.booking-date {
-  font-size: 12px;
-  color: #666;
-}
-
-.no-data-message {
-  font-size: 14px;
-  color: #888;
-  padding: 12px;
-  text-align: center;
-  font-style: italic;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid #e0e5ff;
-  margin-top: 10px;
-}
-
-.btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.btn-secondary {
-  background: #eee;
-  border: none;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background: #ddd;
-}
-
 .add-form {
-  padding: 20px;
+  padding: 24px;
 }
 
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   font-weight: 500;
   color: #333;
 }
 
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
+  padding: 12px 16px;
+  border: 2px solid #e0e5ff;
   border-radius: 8px;
   font-size: 14px;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s ease;
 }
 
 .form-group input:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+.form-group select:focus {
   outline: none;
-  border-color: #5a6cff;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
 }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .btn-cancel,
 .btn-submit {
-  padding: 8px 20px;
+  padding: 10px 24px;
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s ease;
 }
 
 .btn-cancel {
   background: #eee;
-  border: none;
   color: #333;
+  border: none;
 }
 
 .btn-cancel:hover {
@@ -1253,61 +1379,84 @@ const formatDate = (dateString) => {
   cursor: not-allowed;
 }
 
+.modal-body {
+  padding: 24px;
+  text-align: center;
+}
+
+.warning-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.warning-text {
+  color: #ff5252;
+  font-size: 14px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 24px;
+  border-top: 1px solid #e0e5ff;
+}
+
+.btn-danger {
+  background: #ff5252;
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #d32f2f;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
-  .header h1 {
-    font-size: 20px;
+  .header-background {
+    padding: 24px;
   }
-
-  .service-card,
-  .subservice-card {
-    padding: 12px;
-  }
-
-  .service-name,
-  .subservice-name {
-    font-size: 16px;
-  }
-
-  .add-btn {
-    width: 100%;
-    text-align: center;
-    padding: 10px;
-  }
-
-  .category-detail-header {
+  
+  .header-content {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 16px;
   }
-
-  .service-info,
-  .subservice-info {
-    width: 100%;
-    margin-right: 0;
+  
+  .header-actions {
+    justify-content: flex-end;
   }
-
-  .service-actions,
-  .subservice-actions {
-    position: static;
-    align-self: flex-end;
+  
+  .grid-container {
+    grid-template-columns: 1fr;
   }
-
+  
   .modal-content {
     width: 95%;
     margin: 10px;
   }
-
-  .form-group input,
-  .form-group textarea {
-    font-size: 14px;
-    padding: 8px 12px;
+  
+  .page-title {
+    font-size: 24px;
   }
-
-  .btn-cancel,
-  .btn-submit {
-    padding: 8px 16px;
-    font-size: 13px;
+  
+  .card-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .card-icon {
+    margin-right: 0;
+  }
+  
+  .card-actions {
+    position: static;
+    align-self: flex-end;
   }
 }
 </style>
